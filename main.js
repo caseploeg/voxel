@@ -5,6 +5,11 @@ import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
+import Stats from 'stats.js';
+const stats = new Stats();
+stats.showPanel(0);
+document.body.appendChild(stats.dom);
+
 const meta = import.meta.glob('/public/textures/*.png', {
   as: 'url',
   eager: true
@@ -192,7 +197,7 @@ function initScene() {
   //const material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
   // as a demonstration, create a simple voxel world using the cube mesh
   // Create a simple voxel world
-  const worldSize = 5; // 5x5x5 voxel world
+  const worldSize = 10; // 5x5x5 voxel world
   const voxels = [];
 
   // Function to create a voxel at specified position
@@ -230,15 +235,15 @@ function initScene() {
       }
   }
 
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
   scene.add(ambientLight);
 
-  const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
-  sunLight.position.set(10,20,10);
+  const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  sunLight.position.set(50,75,50);
   sunLight.castShadow = true;
   scene.add(sunLight);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: false });
   renderer.setSize(window.innerWidth, window.innerHeight);
 
   document.body.appendChild(renderer.domElement);
@@ -259,7 +264,7 @@ function initScene() {
   ssaoPass.maxDistance = 0.1;
   composer.addPass(ssaoPass);
 
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 1.0, 0.4, 0.85);
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.5, 0.4, 0.85);
   composer.addPass(bloomPass);
 
   const areaSize = 10;
@@ -308,6 +313,7 @@ function initScene() {
   });
 
   function animate() {
+    stats.begin();
     const delta = clock.getDelta(); 
     for(let i = particles.length - 1; i >= 0; i--){
       const p = particles[i];
@@ -331,6 +337,7 @@ function initScene() {
 
     requestAnimationFrame(animate);
     composer.render(scene, camera);
+    stats.end();
   }
   animate();
 }

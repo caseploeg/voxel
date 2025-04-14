@@ -11,4 +11,7 @@
 - Input handling system working properly with keyboard events
 - Set up proper animation loop with delta-time based movement for frame-rate independence
 
-
+1:44pm monday
+- added stats
+- tweaked lighting
+- performance so far: can render 10x10 world , death at 100x100
