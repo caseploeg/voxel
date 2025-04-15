@@ -9,7 +9,7 @@ export class VoxelWorld {
     this.textureManager = textureManager;
     this.voxels = [];
     this.worldData = {};
-    this.blockRegistry = new BlockRegistry();
+    this.blockRegistry = new BlockRegistry(textureManager);
     this.specialMeshes = {}; // Store meshes by block type
     this.clock = new THREE.Clock();
 

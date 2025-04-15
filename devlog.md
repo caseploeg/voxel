@@ -37,8 +37,14 @@
 - add water shader support
 - start adding better texture management 
 
-5:16pm 
+5:16pm tuesday
 - shader support within world
 - multi faced assets
 - debug screen
+
+5:25pm tuesday
+- dev console, teleport command
+
+5:28pm tuesday
+- add big warnings to block registry
 
