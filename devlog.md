@@ -21,3 +21,9 @@
 - refactor (headache) 
   - good for learning tho
   - project can now expand
+
+11:27am tuesday
+- refactors, 
+  - input handler
+  - voxel world
+- getting ready for optimizations
