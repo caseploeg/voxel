@@ -1,3 +1,4 @@
+
 import * as THREE from 'three';
 
 export class TextureDebugger {
@@ -35,7 +36,9 @@ export class TextureDebugger {
     this.debugPanel.style.position = 'fixed';
     this.debugPanel.style.top = '10px';
     this.debugPanel.style.right = '10px';
+    // Adjust width as desired
     this.debugPanel.style.width = '300px';
+    // Restrict height and allow vertical scrolling
     this.debugPanel.style.maxHeight = '80vh';
     this.debugPanel.style.overflowY = 'auto';
     this.debugPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
@@ -107,9 +110,11 @@ export class TextureDebugger {
 
     // Create texture list
     this.textureList = document.createElement('div');
-    this.textureList.style.display = 'grid';
-    this.textureList.style.gridTemplateColumns = 'repeat(2, 1fr)';
+    // Single-column layout for straightforward vertical scrolling
+    this.textureList.style.display = 'flex';
+    this.textureList.style.flexDirection = 'column';
     this.textureList.style.gap = '10px';
+
     this.debugPanel.appendChild(this.textureList);
 
     document.body.appendChild(this.debugPanel);
@@ -167,14 +172,12 @@ export class TextureDebugger {
         : 'rgba(100, 0, 0, 0.3)';
       textureCard.style.borderRadius = '5px';
       textureCard.style.padding = '8px';
-      textureCard.style.marginBottom = '5px';
       textureCard.style.cursor = 'pointer';
 
       // Add hover effect
       textureCard.addEventListener('mouseenter', () => {
         textureCard.style.boxShadow = '0 0 5px rgba(255, 255, 255, 0.5)';
       });
-
       textureCard.addEventListener('mouseleave', () => {
         textureCard.style.boxShadow = 'none';
       });
@@ -184,7 +187,8 @@ export class TextureDebugger {
       preview.style.width = '64px';
       preview.style.height = '64px';
       preview.style.margin = '0 auto';
-      preview.style.backgroundImage = url(`${this.createTexturePreview(name)}`);
+      // Use backticks for backgroundImage
+      preview.style.backgroundImage = `url(${this.createTexturePreview(name)})`;
       preview.style.backgroundSize = 'contain';
       preview.style.backgroundRepeat = 'no-repeat';
       preview.style.backgroundPosition = 'center';
@@ -465,8 +469,16 @@ export class TextureDebugger {
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
         ctx.font = '8px monospace';
-        ctx.fillText(`U: ${offsetX.toFixed(2)}-${(offsetX + repeatX).toFixed(2)}`, 2, 10);
-        ctx.fillText(`V: ${offsetY.toFixed(2)}-${(offsetY + repeatY).toFixed(2)}`, 2, 20);
+        ctx.fillText(
+          `U: ${offsetX.toFixed(2)}-${(offsetX + repeatX).toFixed(2)}`,
+          2,
+          10
+        );
+        ctx.fillText(
+          `V: ${offsetY.toFixed(2)}-${(offsetY + repeatY).toFixed(2)}`,
+          2,
+          20
+        );
       }
     }
 
@@ -519,7 +531,7 @@ export class TextureDebugger {
         info.isValid = false;
       }
 
-      // Special case leaves
+      // Special case leaves, grass
       if (
         name === 'acacia_leaves' ||
         name === 'oak_leaves' ||
@@ -636,24 +648,7 @@ export class TextureDebugger {
     return valid;
   }
 
-  // ----------------------------------------------------------------------
-  // NEW FUNCTIONALITY: ATLAS OVERLAY (with search, click to see full name)
-  // ----------------------------------------------------------------------
-  toggleAtlasOverlay() {
-    // If we haven't created the overlay yet, do so
-    if (!this.atlasOverlay) {
-      this.createAtlasOverlay();
-    }
-    // Toggle visibility
-    this.atlasOverlayVisible = !this.atlasOverlayVisible;
-    this.atlasOverlay.style.display = this.atlasOverlayVisible ? 'block' : 'none';
-
-    if (this.atlasOverlayVisible) {
-      // Redraw with current filter
-      this.drawAtlasOverlay();
-    }
-  }
-
+  // Updated createAtlasOverlay method with grid-based view
   createAtlasOverlay() {
     // Create container div for the atlas overlay
     this.atlasOverlay = document.createElement('div');
@@ -664,26 +659,36 @@ export class TextureDebugger {
     this.atlasOverlay.style.zIndex = '1001';
     this.atlasOverlay.style.border = '1px solid #888';
     this.atlasOverlay.style.backgroundColor = '#222';
-    this.atlasOverlay.style.padding = '5px';
+    this.atlasOverlay.style.padding = '10px';
     this.atlasOverlay.style.display = 'none'; // hidden by default
+    this.atlasOverlay.style.width = '600px'; // Fixed width
 
-    // Make overlay scrollable if needed
-    this.atlasOverlay.style.maxWidth = '80vw';
+    // Make overlay vertically scrollable
     this.atlasOverlay.style.maxHeight = '80vh';
-    this.atlasOverlay.style.overflow = 'auto';
+    this.atlasOverlay.style.overflowY = 'auto';
 
-    // Add search bar
-    const searchContainer = document.createElement('div');
-    searchContainer.style.marginBottom = '5px';
+    // Add title
+    const title = document.createElement('h3');
+    title.textContent = 'Texture Atlas Grid View';
+    title.style.margin = '0 0 10px 0';
+    title.style.color = '#fff';
+    this.atlasOverlay.appendChild(title);
+
+    // Add search bar and controls
+    const controlsContainer = document.createElement('div');
+    controlsContainer.style.marginBottom = '10px';
+    controlsContainer.style.display = 'flex';
+    controlsContainer.style.alignItems = 'center';
+    controlsContainer.style.gap = '10px';
 
     this.atlasSearchInput = document.createElement('input');
     this.atlasSearchInput.type = 'text';
     this.atlasSearchInput.placeholder = 'Search textures...';
-    this.atlasSearchInput.style.width = '150px';
-    this.atlasSearchInput.style.marginRight = '10px';
+    this.atlasSearchInput.style.flex = '1';
+    this.atlasSearchInput.style.padding = '5px';
     this.atlasSearchInput.addEventListener('input', () => {
       this.atlasFilterText = this.atlasSearchInput.value.trim().toLowerCase();
-      this.drawAtlasOverlay();
+      this.drawGridAtlasOverlay();
     });
 
     // Label to show how many textures are displayed
@@ -691,152 +696,441 @@ export class TextureDebugger {
     this.atlasCountLabel.style.color = '#fff';
     this.atlasCountLabel.textContent = '0 / 0';
 
-    searchContainer.appendChild(this.atlasSearchInput);
-    searchContainer.appendChild(this.atlasCountLabel);
-    this.atlasOverlay.appendChild(searchContainer);
+    controlsContainer.appendChild(this.atlasSearchInput);
+    controlsContainer.appendChild(this.atlasCountLabel);
+    this.atlasOverlay.appendChild(controlsContainer);
 
-    // Attempt to render the atlas image plus bounding boxes
+    // Add grid cell size slider
+    const sizeContainer = document.createElement('div');
+    sizeContainer.style.marginBottom = '10px';
+    sizeContainer.style.display = 'flex';
+    sizeContainer.style.alignItems = 'center';
+    sizeContainer.style.gap = '10px';
+
+    const sizeLabel = document.createElement('label');
+    sizeLabel.textContent = 'Texture Size:';
+    sizeLabel.style.color = '#fff';
+
+    const sizeSlider = document.createElement('input');
+    sizeSlider.type = 'range';
+    sizeSlider.min = '32';
+    sizeSlider.max = '128';
+    sizeSlider.step = '16';
+    sizeSlider.value = '64';
+    sizeSlider.style.flex = '1';
+    sizeSlider.addEventListener('input', (e) => {
+      this.gridCellSize = parseInt(e.target.value);
+      this.drawGridAtlasOverlay();
+    });
+    
+    const sizeValueLabel = document.createElement('span');
+    sizeValueLabel.textContent = '64px';
+    sizeValueLabel.style.color = '#fff';
+    sizeValueLabel.style.minWidth = '50px';
+    
+    sizeSlider.addEventListener('input', (e) => {
+      const value = e.target.value;
+      sizeValueLabel.textContent = `${value}px`;
+      this.gridCellSize = parseInt(value);
+      this.drawGridAtlasOverlay();
+    });
+
+    sizeContainer.appendChild(sizeLabel);
+    sizeContainer.appendChild(sizeSlider);
+    sizeContainer.appendChild(sizeValueLabel);
+    this.atlasOverlay.appendChild(sizeContainer);
+
+    // Container for the grid
+    this.gridContainer = document.createElement('div');
+    this.gridContainer.style.display = 'grid';
+    this.gridContainer.style.gap = '5px';
+    this.gridContainer.style.justifyContent = 'center';
+    this.atlasOverlay.appendChild(this.gridContainer);
+
+    // Set default grid cell size
+    this.gridCellSize = 64;
+
+    // Get the atlas texture from the texture manager
     const atlasTexture = this.textureManager.atlasTexture;
+    
     if (!atlasTexture || !atlasTexture.image) {
       const errorMsg = document.createElement('p');
       errorMsg.textContent = 'Atlas texture is not loaded or unavailable.';
       errorMsg.style.color = 'red';
       this.atlasOverlay.appendChild(errorMsg);
-    } else {
-      // We'll create a canvas to draw on top of the atlas
-      this.atlasOverlayCanvas = document.createElement('canvas');
-      this.atlasOverlayCtx = this.atlasOverlayCanvas.getContext('2d');
-
-      // Set canvas dimensions to match the atlas
-      const width = atlasTexture.image.width;
-      const height = atlasTexture.image.height;
-      this.atlasOverlayCanvas.width = width;
-      this.atlasOverlayCanvas.height = height;
-      this.atlasOverlayCanvas.style.display = 'block';
-      this.atlasOverlayCanvas.style.border = '1px solid #555';
-
-      // Build bounding box data
-      const atlasMapping = this.textureManager.atlasMapping;
-      this.atlasBoxes = []; // reset
-
+      document.body.appendChild(this.atlasOverlay);
+      return;
+    }
+    
+    // Log atlas dimensions
+    const atlasWidth = atlasTexture.image.width;
+    const atlasHeight = atlasTexture.image.height;
+    console.log(`Atlas dimensions: ${atlasWidth}x${atlasHeight}`);
+    
+    // Build texture info
+    this.atlasBoxes = [];
+    
+    // Try first with atlasMapping
+    const atlasMapping = this.textureManager.atlasMapping;
+    if (atlasMapping && Object.keys(atlasMapping).length > 0) {
       for (const url in atlasMapping) {
-        const { offset, size } = atlasMapping[url];
-        const x = offset.x * width;
-        const y = offset.y * height;
-        const w = size.x * width;
-        const h = size.y * height;
+        const mapping = atlasMapping[url];
+        if (!mapping || !mapping.offset || !mapping.size) {
+          console.warn(`Invalid mapping for ${url}`, mapping);
+          continue;
+        }
 
-        // Full texture name is the last part of the URL (minus extension)
-        let textureFullName = url.split('/').pop(); // e.g. "grass_block_side.png"
-        textureFullName = textureFullName.replace(/\.(png|jpg|jpeg|webp)$/i, '');
+        const x = mapping.offset.x * atlasWidth;
+        const y = mapping.offset.y * atlasHeight;
+        const w = mapping.size.x * atlasWidth;
+        const h = mapping.size.y * atlasHeight;
 
+        // Extract texture name from URL
+        let textureName = url.split('/').pop(); // e.g. "grass_block_side.png"
+        if (textureName) {
+          textureName = textureName.replace(/\.(png|jpg|jpeg|webp)$/i, '');
+          
+          this.atlasBoxes.push({
+            x, y, w, h,
+            textureUrl: url,
+            textureName: textureName
+          });
+        }
+      }
+    } else {
+      // Fallback to texture cache
+      console.log("Using texture cache for atlas data");
+      const textures = this.textureManager.textureCache;
+      
+      if (!textures) {
+        console.error("No texture cache available");
+        return;
+      }
+      
+      for (const name in textures) {
+        const texture = textures[name];
+        if (!texture || !texture.offset || !texture.repeat) {
+          console.warn(`Invalid texture data for ${name}`, texture);
+          continue;
+        }
+        
+        const x = texture.offset.x * atlasWidth;
+        const y = texture.offset.y * atlasHeight;
+        const w = texture.repeat.x * atlasWidth;
+        const h = texture.repeat.y * atlasHeight;
+        
         this.atlasBoxes.push({
           x, y, w, h,
-          textureUrl: url,
-          textureName: textureFullName // store the full name
+          textureUrl: name,
+          textureName: name
         });
       }
-
-      // Add event listener for clicking on bounding boxes
-      this.atlasOverlayCanvas.addEventListener('click', (e) => {
-        const rect = this.atlasOverlayCanvas.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
-
-        // Find which box was clicked
-        for (let i = 0; i < this.atlasBoxes.length; i++) {
-          const box = this.atlasBoxes[i];
-          if (
-            clickX >= box.x && clickX <= box.x + box.w &&
-            clickY >= box.y && clickY <= box.y + box.h
-          ) {
-            // Show a small tooltip with the full texture name
-            this.showAtlasTooltip(e.pageX, e.pageY, box.textureName);
-            break;
-          }
-        }
-      });
-
-      this.atlasOverlay.appendChild(this.atlasOverlayCanvas);
     }
+    
+    console.log(`Found ${this.atlasBoxes.length} textures in atlas`);
 
     document.body.appendChild(this.atlasOverlay);
+
+    // Initial draw of the grid atlas
+    this.drawGridAtlasOverlay();
   }
 
-  drawAtlasOverlay() {
-    // Safety check
-    if (!this.atlasOverlayCanvas || !this.atlasOverlayCtx) return;
+  // New method to draw the grid-based atlas view
+  drawGridAtlasOverlay() {
+    // Clear previous grid
+    this.gridContainer.innerHTML = '';
+    
+    if (!this.atlasBoxes || this.atlasBoxes.length === 0) {
+      const errorMsg = document.createElement('p');
+      errorMsg.textContent = 'No texture data available.';
+      errorMsg.style.color = 'red';
+      this.gridContainer.appendChild(errorMsg);
+      return;
+    }
 
     const atlasTexture = this.textureManager.atlasTexture;
-    if (!atlasTexture || !atlasTexture.image) return;
+    if (!atlasTexture || !atlasTexture.image) {
+      const errorMsg = document.createElement('p');
+      errorMsg.textContent = 'Atlas texture image not available.';
+      errorMsg.style.color = 'red';
+      this.gridContainer.appendChild(errorMsg);
+      return;
+    }
 
-    const ctx = this.atlasOverlayCtx;
-    const width = atlasTexture.image.width;
-    const height = atlasTexture.image.height;
-
-    // Clear and draw the atlas background
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(atlasTexture.image, 0, 0);
-
-    // Filter bounding boxes by search text
-    const filterText = this.atlasFilterText;
+    // Filter textures based on search
     let filteredBoxes = this.atlasBoxes;
-    if (filterText) {
-      filteredBoxes = this.atlasBoxes.filter((box) =>
-        box.textureName.toLowerCase().includes(filterText)
+    if (this.atlasFilterText) {
+      filteredBoxes = this.atlasBoxes.filter(box => 
+        box.textureName.toLowerCase().includes(this.atlasFilterText)
       );
     }
 
     // Update the count label
-    this.atlasCountLabel.textContent = `${filteredBoxes.length}` / `${this.atlasBoxes.length}`;
-    // Draw bounding boxes
-    ctx.strokeStyle = 'red';
-    ctx.lineWidth = 1;
-    ctx.font = '12px sans-serif';
-
-    filteredBoxes.forEach((box) => {
-      ctx.beginPath();
-      ctx.rect(box.x, box.y, box.w, box.h);
-      ctx.stroke();
-
-      // We'll draw the short label with black stroke & yellow fill
-      const label = box.textureName;
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'black';
-      ctx.fillStyle = 'yellow';
-      // Outline text
-      ctx.strokeText(label, box.x + 2, box.y + 12);
-      // Fill text
-      ctx.fillText(label, box.x + 2, box.y + 12);
-    });
-  }
-
-  showAtlasTooltip(x, y, text) {
-    // Create or reuse a tooltip div
-    let tooltip = document.getElementById('atlas-overlay-tooltip');
-    if (!tooltip) {
-      tooltip = document.createElement('div');
-      tooltip.id = 'atlas-overlay-tooltip';
-      tooltip.style.position = 'absolute';
-      tooltip.style.padding = '4px 8px';
-      tooltip.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
-      tooltip.style.color = 'yellow';
-      tooltip.style.border = '1px solid #333';
-      tooltip.style.borderRadius = '4px';
-      tooltip.style.fontSize = '12px';
-      tooltip.style.pointerEvents = 'none';
-      tooltip.style.zIndex = '2000';
-      document.body.appendChild(tooltip);
+    if (this.atlasCountLabel) {
+      this.atlasCountLabel.textContent = `${filteredBoxes.length} / ${this.atlasBoxes.length}`;
     }
-    tooltip.style.left = x + 'px';
-    tooltip.style.top = y + 'px';
-    tooltip.textContent = text;
 
-    // Hide tooltip after 2 seconds
-    setTimeout(() => {
-      if (tooltip && tooltip.parentNode) {
-        tooltip.parentNode.removeChild(tooltip);
+    // Calculate grid columns based on container width
+    const containerWidth = this.atlasOverlay.clientWidth - 30; // Account for padding
+    const columns = Math.max(2, Math.floor(containerWidth / (this.gridCellSize + 5)));
+    
+    // Set grid template columns
+    this.gridContainer.style.gridTemplateColumns = `repeat(${columns}, ${this.gridCellSize}px)`;
+
+    // Create a cell for each texture
+    filteredBoxes.forEach(box => {
+      const cell = document.createElement('div');
+      cell.style.width = `${this.gridCellSize}px`;
+      cell.style.height = `${this.gridCellSize}px`;
+      cell.style.position = 'relative';
+      cell.style.border = '1px solid #444';
+      cell.style.borderRadius = '3px';
+      cell.style.overflow = 'hidden';
+      cell.style.cursor = 'pointer';
+      
+      // Create canvas for the texture
+      const canvas = document.createElement('canvas');
+      canvas.width = this.gridCellSize;
+      canvas.height = this.gridCellSize;
+      const ctx = canvas.getContext('2d');
+      
+      // Draw checkered background
+      ctx.fillStyle = '#aaaaaa';
+      ctx.fillRect(0, 0, this.gridCellSize, this.gridCellSize);
+      ctx.fillStyle = '#888888';
+      const checkerSize = this.gridCellSize / 4;
+      for (let y = 0; y < this.gridCellSize; y += checkerSize) {
+        for (let x = 0; x < this.gridCellSize; x += checkerSize) {
+          if ((x / checkerSize + y / checkerSize) % 2 === 0) {
+            ctx.fillRect(x, y, checkerSize, checkerSize);
+          }
+        }
       }
-    }, 2000);
+      
+      // Draw texture from atlas
+      try {
+        ctx.drawImage(
+          atlasTexture.image,
+          box.x, box.y, box.w, box.h,
+          0, 0, this.gridCellSize, this.gridCellSize
+        );
+      } catch (error) {
+        console.error(`Failed to draw texture ${box.textureName}:`, error);
+      }
+      
+      cell.appendChild(canvas);
+      
+      // Add texture name label
+      const label = document.createElement('div');
+      label.style.position = 'absolute';
+      label.style.bottom = '0';
+      label.style.left = '0';
+      label.style.right = '0';
+      label.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      label.style.color = 'white';
+      label.style.padding = '2px 4px';
+      label.style.fontSize = '10px';
+      label.style.overflow = 'hidden';
+      label.style.textOverflow = 'ellipsis';
+      label.style.whiteSpace = 'nowrap';
+      label.textContent = box.textureName;
+      cell.appendChild(label);
+      
+      // Add click handler to show detailed info
+      cell.addEventListener('click', () => {
+        this.showTextureDetails(box);
+      });
+      
+      this.gridContainer.appendChild(cell);
+    });
+    
+    // Add message if no results
+    if (filteredBoxes.length === 0) {
+      const noResults = document.createElement('div');
+      noResults.style.gridColumn = '1 / -1'; // Span all columns
+      noResults.style.padding = '20px';
+      noResults.style.color = 'white';
+      noResults.style.textAlign = 'center';
+      noResults.textContent = 'No matching textures found.';
+      this.gridContainer.appendChild(noResults);
+    }
   }
-}
+
+  // New method to show texture details
+  showTextureDetails(box) {
+    // Remove any existing details popup
+    const existingPopup = document.getElementById('texture-details-popup');
+    if (existingPopup) {
+      existingPopup.remove();
+    }
+    
+    // Create popup
+    const popup = document.createElement('div');
+    popup.id = 'texture-details-popup';
+    popup.style.position = 'fixed';
+    popup.style.top = '50%';
+    popup.style.left = '50%';
+    popup.style.transform = 'translate(-50%, -50%)';
+    popup.style.backgroundColor = '#333';
+    popup.style.border = '2px solid #555';
+    popup.style.borderRadius = '5px';
+    popup.style.padding = '20px';
+    popup.style.zIndex = '2000';
+    popup.style.boxShadow = '0 0 20px rgba(0, 0, 0, 0.5)';
+    popup.style.maxWidth = '90vw';
+    popup.style.maxHeight = '90vh';
+    popup.style.display = 'flex';
+    popup.style.flexDirection = 'column';
+    popup.style.gap = '15px';
+    
+    // Add close button
+    const closeButton = document.createElement('button');
+    closeButton.textContent = '×';
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '5px';
+    closeButton.style.right = '10px';
+    closeButton.style.background = 'none';
+    closeButton.style.border = 'none';
+    closeButton.style.color = 'white';
+    closeButton.style.fontSize = '24px';
+    closeButton.style.cursor = 'pointer';
+    closeButton.addEventListener('click', () => popup.remove());
+    popup.appendChild(closeButton);
+    
+    // Add texture name header
+    const header = document.createElement('h3');
+    header.textContent = box.textureName;
+    header.style.margin = '0';
+    header.style.color = 'white';
+    popup.appendChild(header);
+    
+    // Container for image and details
+    const contentContainer = document.createElement('div');
+    contentContainer.style.display = 'flex';
+    contentContainer.style.gap = '20px';
+    contentContainer.style.alignItems = 'flex-start';
+    popup.appendChild(contentContainer);
+    
+    // Create enlarged texture preview
+    const previewSize = 200;
+    const canvas = document.createElement('canvas');
+    canvas.width = previewSize;
+    canvas.height = previewSize;
+    canvas.style.border = '1px solid #666';
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Draw checkered background
+    ctx.fillStyle = '#aaaaaa';
+    ctx.fillRect(0, 0, previewSize, previewSize);
+    ctx.fillStyle = '#888888';
+    const checkerSize = previewSize / 8;
+    for (let y = 0; y < previewSize; y += checkerSize) {
+      for (let x = 0; x < previewSize; x += checkerSize) {
+        if ((x / checkerSize + y / checkerSize) % 2 === 0) {
+          ctx.fillRect(x, y, checkerSize, checkerSize);
+        }
+      }
+    }
+    
+    // Draw texture from atlas
+    try {
+      const atlasTexture = this.textureManager.atlasTexture;
+      ctx.drawImage(
+        atlasTexture.image,
+        box.x, box.y, box.w, box.h,
+        0, 0, previewSize, previewSize
+      );
+    } catch (error) {
+      console.error(`Failed to draw texture preview:`, error);
+    }
+    
+    contentContainer.appendChild(canvas);
+    
+    // Texture details
+    const details = document.createElement('div');
+    details.style.color = 'white';
+    details.style.fontSize = '14px';
+    
+    // Add texture info
+    const infoList = [
+      `Name: ${box.textureName}`,
+      `Dimensions: ${Math.round(box.w)}x${Math.round(box.h)}`,
+      `Atlas Position: (${Math.round(box.x)}, ${Math.round(box.y)})`,
+      `Is Valid Block: ${this.textureInfos[box.textureName]?.isValid ? 'Yes' : 'No'}`
+    ];
+    
+    infoList.forEach(info => {
+      const p = document.createElement('p');
+      p.textContent = info;
+      p.style.margin = '5px 0';
+      details.appendChild(p);
+    });
+    
+    contentContainer.appendChild(details);
+    
+    // Add action buttons
+    const actionsContainer = document.createElement('div');
+    actionsContainer.style.marginTop = '10px';
+    actionsContainer.style.display = 'flex';
+    actionsContainer.style.gap = '10px';
+    actionsContainer.style.justifyContent = 'flex-start';
+    popup.appendChild(actionsContainer);
+    
+    // Toggle valid button
+    const validButton = document.createElement('button');
+    const isValid = this.textureInfos[box.textureName]?.isValid || false;
+    validButton.textContent = isValid ? 'Mark as Invalid' : 'Mark as Valid';
+    validButton.style.padding = '5px 10px';
+    validButton.addEventListener('click', () => {
+      if (!this.textureInfos[box.textureName]) {
+        this.textureInfos[box.textureName] = { name: box.textureName };
+      }
+      this.textureInfos[box.textureName].isValid = !isValid;
+      popup.remove();
+      this.drawGridAtlasOverlay();
+    });
+    actionsContainer.appendChild(validButton);
+    
+    // Multi-sided toggle if valid
+    if (isValid) {
+      const multiSidedButton = document.createElement('button');
+      const isMultiSided = !!this.multiSidedBlocks[box.textureName];
+      multiSidedButton.textContent = isMultiSided ? 'Remove Multi-sided' : 'Set as Multi-sided';
+      multiSidedButton.style.padding = '5px 10px';
+      multiSidedButton.addEventListener('click', () => {
+        if (isMultiSided) {
+          delete this.multiSidedBlocks[box.textureName];
+        } else {
+          this.multiSidedBlocks[box.textureName] = {
+            top: box.textureName,
+            sides: box.textureName,
+            bottom: box.textureName
+          };
+        }
+        popup.remove();
+      });
+      actionsContainer.appendChild(multiSidedButton);
+    }
+    
+    document.body.appendChild(popup);
+  }
+
+  // Updated toggleAtlasOverlay method
+  toggleAtlasOverlay() {
+    if (!this.atlasOverlay) {
+      this.createAtlasOverlay();
+    }
+    
+    this.atlasOverlayVisible = !this.atlasOverlayVisible;
+    
+    if (this.atlasOverlay) {
+      this.atlasOverlay.style.display = this.atlasOverlayVisible ? 'block' : 'none';
+    }
+
+    if (this.atlasOverlayVisible) {
+      console.log("Grid atlas overlay visible");
+      this.drawGridAtlasOverlay();
+    }
+  }
+};

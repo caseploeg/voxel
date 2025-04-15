@@ -59,3 +59,6 @@
 
 7:27pm tuesday
 - refactor voxelworld into meshbuilder and world data classes
+
+7:43pm tuesday
+- fix the atlas debug overlay so its more readable
