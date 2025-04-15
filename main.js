@@ -24,7 +24,7 @@ const meta = import.meta.glob('/public/textures/*.png', {
 let texturePaths = Object.keys(meta).map(path => {
   const filename = path;
   return filename;
-}).slice(290,300);
+}).slice(0,10);
 
 export class Game {
   constructor() {
@@ -138,6 +138,11 @@ export class Game {
 
     if (this.inputHandler) {
       this.inputHandler.update(delta);
+    }
+    
+    // Update voxel world animations (like water)
+    if (this.voxelWorld) {
+      this.voxelWorld.update(delta);
     }
     
     if (this.renderManager) {

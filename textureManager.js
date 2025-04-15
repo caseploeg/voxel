@@ -53,6 +53,7 @@ export class TextureManager {
     showTextureAtlas(canvas);
     this.atlasMapping = atlasMapping;
     this.textureCache = this._createTextureMap(this.atlasTexture, this.atlasMapping);
+    console.log(this.textureCache);
     this.isLoaded = true;
     
     return this;
