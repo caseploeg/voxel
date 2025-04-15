@@ -15,3 +15,9 @@
 - added stats
 - tweaked lighting
 - performance so far: can render 10x10 world , death at 100x100
+
+5:14pm monday
+- eat 
+- refactor (headache) 
+  - good for learning tho
+  - project can now expand
