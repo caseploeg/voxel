@@ -12,6 +12,9 @@ export class InputHandler {
     this.camera = camera;
     this.domElement = domElement;
     this.controls = new PointerLockControls(camera, domElement);
+    
+    // Debug mode flag
+    this.debugMode = false;
 
     // Movement flags
     this.movement = {
@@ -55,9 +58,22 @@ export class InputHandler {
       }
     });
 
-    // Click to lock pointer (optional)
-    document.addEventListener('click', () => {
-      if (!this.controls.isLocked) {
+    // Listen for debugger toggle events
+    window.addEventListener('texture-debugger-toggle', (event) => {
+      this.debugMode = event.detail.visible;
+      
+      // If entering debug mode, unlock the controls
+      if (this.debugMode && this.controls.isLocked) {
+        this.controls.unlock();
+      }
+    });
+
+    // Click to lock pointer (only when not in debug mode)
+    document.addEventListener('click', (event) => {
+      // Don't lock if we're in debug mode or if we clicked on a UI element
+      const isUiElement = event.target.closest('.debug-panel') !== null;
+      
+      if (!this.debugMode && !isUiElement && !this.controls.isLocked) {
         this.controls.lock();
       }
     });
@@ -69,20 +85,34 @@ export class InputHandler {
    * @param {number} delta - Time elapsed since last frame
    */
   update(delta) {
-    // Only move if pointer is locked
-    if (this.controls.isLocked) {
-      const speed = this.movementSpeed * delta;
-      if (this.movement.forward) this.controls.moveForward(speed);
-      if (this.movement.back)    this.controls.moveForward(-speed);
-      if (this.movement.left)    this.controls.moveRight(-speed);
-      if (this.movement.right)   this.controls.moveRight(speed);
+    // Don't move in debug mode or if controls aren't locked
+    if (this.debugMode || !this.controls.isLocked) {
+      return;
+    }
+    
+    // Handle movement
+    const speed = this.movementSpeed * delta;
+    if (this.movement.forward) this.controls.moveForward(speed);
+    if (this.movement.back)    this.controls.moveForward(-speed);
+    if (this.movement.left)    this.controls.moveRight(-speed);
+    if (this.movement.right)   this.controls.moveRight(speed);
 
-      if (this.movement.up) {
-        this.camera.position.y += speed;
-      }
-      if (this.movement.down) {
-        this.camera.position.y -= speed;
-      }
+    if (this.movement.up) {
+      this.camera.position.y += speed;
+    }
+    if (this.movement.down) {
+      this.camera.position.y -= speed;
+    }
+  }
+  
+  /**
+   * Manually set debug mode
+   * @param {boolean} enabled - Whether debug mode is enabled
+   */
+  setDebugMode(enabled) {
+    this.debugMode = enabled;
+    if (enabled && this.controls.isLocked) {
+      this.controls.unlock();
     }
   }
 }

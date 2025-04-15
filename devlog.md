@@ -32,3 +32,13 @@
 - refactor, render manager
 - perf: culling unseen sides of the mesh
 - perf: building one mesh based on generated geometry
+
+2:35pm tuesday
+- add water shader support
+- start adding better texture management 
+
+5:16pm 
+- shader support within world
+- multi faced assets
+- debug screen
+

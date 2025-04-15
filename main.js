@@ -7,8 +7,9 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 
 import { TextureManager } from './textureManager.js';
 import { InputHandler } from './inputHandler.js'; 
-import { VoxelWorld } from './voxelWorld.js';  // <-- import our new class
+import { VoxelWorld } from './voxelWorld.js';
 import { RenderManager } from './renderManager.js';
+import { TextureDebugger } from './textureDebugger.js';
 
 import Stats from 'stats.js';
 const stats = new Stats();
@@ -20,11 +21,22 @@ const meta = import.meta.glob('/public/textures/*.png', {
   eager: true
 });
 
-// Adjust the slice if you want more or fewer textures
-let texturePaths = Object.keys(meta).map(path => {
-  const filename = path;
-  return filename;
-}).slice(0,10);
+// Helper to check if a texture should be loaded
+const isValidTexture = (path) => {
+  return validBlockPatterns.some(pattern => path.includes(pattern));
+};
+
+// Select a reasonable subset of textures for initial load
+let texturePaths = Object.keys(meta)
+  .map(path => path);
+
+// If we got too few textures, add some more
+if (texturePaths.length > 20) {
+  texturePaths = Object.keys(meta)
+    .slice(0,20)
+    .map(path => path);
+}
+
 
 export class Game {
   constructor() {
@@ -41,6 +53,7 @@ export class Game {
     this.voxelWorld = null;
     this.inputHandler = null;
     this.renderManager = null;
+    this.textureDebugger = null;
 
     this.debugMenuVisible = false;
     this.debugMenuElement = null;
@@ -49,12 +62,56 @@ export class Game {
   async initialize() {
     try {
       await this.textures.load();   // Load the atlas
+      
+      // Create and initialize the voxel world (needed for the block registry)
+      this.voxelWorld = new VoxelWorld(null, this.textures);
+      
+      // Create texture debugger after textures are loaded
+      this.textureDebugger = new TextureDebugger(this.textures, this.voxelWorld.blockRegistry);
+      this.textureDebugger.initialize();
+      
       this.initScene();
       this.createDebugMenu();
+      
+      // Setup keyboard controls for texture debugger
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'F4') {
+          this.rebuildWorldWithDebuggerSettings();
+        }
+      });
+      
       this.animate();
     } catch (error) {
       console.error('Error in init:', error);
     }
+  }
+  
+  /**
+   * Rebuild the world using the texture settings from the debugger
+   */
+  rebuildWorldWithDebuggerSettings() {
+    if (!this.textureDebugger || !this.voxelWorld) return;
+    
+    // Get valid textures from the debugger
+    const validTextures = this.textureDebugger.getValidTextures();
+    
+    // Apply them to the block registry
+    this.voxelWorld.blockRegistry.setValidTextures(validTextures);
+    
+    // Clear the entire scene except for lights and camera
+    const meshesToRemove = this.scene.children.filter(child => 
+      child.isMesh && child !== this.debugMesh);
+    
+    meshesToRemove.forEach(mesh => this.scene.remove(mesh));
+    
+    // Clear the world data
+    this.voxelWorld.worldData = {};
+    
+    // Generate a small testing world with just one block initially
+    this.voxelWorld.generateSimpleTerrain(5); // Smaller size for testing
+    
+    // Build new mesh
+    this.voxelWorld.buildCulledMesh();
   }
 
   initScene(){
@@ -72,8 +129,10 @@ export class Game {
     camera.lookAt(new THREE.Vector3(0, 0, 0));
     this.renderManager = new RenderManager(scene, camera);
 
-    // Initialize and generate the voxel world
-    this.voxelWorld = new VoxelWorld(scene, this.textures);
+    // Update the scene reference on the voxel world (which was created earlier)
+    this.voxelWorld.scene = scene;
+    
+    // Generate the terrain and build the mesh
     this.voxelWorld.generateTerrain(20);  // or a different size if you want
     this.voxelWorld.buildCulledMesh();
 
@@ -86,7 +145,7 @@ export class Game {
     sunLight.castShadow = true;
     scene.add(sunLight);
 
-    this.inputHandler = new InputHandler(camera, document.body, { movementSpeed: 5.0 });
+    this.inputHandler = new InputHandler(camera, document.body, { movementSpeed: 50.0 });
 
 
     // Store references on the Game instance

@@ -1,6 +1,6 @@
 // voxelWorld.js
 import * as THREE from 'three';
-import { BlockRegistry, BlockType } from './blockRegistry.js';
+import { BlockRegistry, BlockType, Direction } from './blockRegistry.js';
 import { createWaterMaterial } from './shaders/waterShader.js';
 
 export class VoxelWorld {
@@ -18,10 +18,12 @@ export class VoxelWorld {
     this.cubeGeometry = new THREE.BoxGeometry(this.cubeSize, this.cubeSize, this.cubeSize);
   }
 
-  getRandomBlockType(textureManager) {
-    const names = Object.keys(textureManager.textureCache);
-    if (!names.length) return null;
-    return names[Math.floor(Math.random() * names.length)];
+  /**
+   * Get a random block texture that's valid for use
+   * @returns {string} Random valid texture name
+   */
+  getRandomBlockType() {
+    return this.blockRegistry.getRandomValidTexture(this.textureManager);
   }
 
   /**
@@ -29,49 +31,92 @@ export class VoxelWorld {
    * @param {number} x - X coordinate
    * @param {number} y - Y coordinate
    * @param {number} z - Z coordinate
-   * @param {string} blockType - Optional block type (water, standard, etc)
+   * @param {string} blockType - Optional block type (water, standard, multi_sided, etc)
+   * @param {string} blockName - Optional specific block name for multi-sided blocks
    */
-  setBlock(x, y, z, blockType) {
-    // If blockType is not specified, use standard or random texture
+  setBlock(x, y, z, blockType, blockName) {
+    // If blockType is not specified, use standard
     if (!blockType) {
       blockType = BlockType.STANDARD;
     }
 
-    // For standard blocks, assign a random texture
-    let textureType = null;
+    // Handle different block types
+    const blockData = { blockType };
+    
     if (blockType === BlockType.STANDARD) {
-      textureType = this.getRandomBlockType(this.textureManager);
+      // For standard blocks, assign a random valid texture
+      blockData.textureType = this.getRandomBlockType();
+    } 
+    else if (blockType === BlockType.MULTI_SIDED) {
+      // For multi-sided blocks, we need the specific block name
+      if (!blockName || !this.blockRegistry.isMultiSidedBlock(blockName)) {
+        blockData.blockType = BlockType.STANDARD;
+        blockData.textureType = this.getRandomBlockType();
+      } else {
+        blockData.blockName = blockName;
+      }
     }
+    // For water blocks, we don't need a texture type
 
-    this.worldData[`${x},${y},${z}`] = { 
-      blockType: blockType,
-      textureType: textureType
-    };
+    this.worldData[`${x},${y},${z}`] = blockData;
+  }
+  
+  /**
+   * Place a specific type of block in the world
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate
+   * @param {number} z - Z coordinate
+   * @param {string} blockName - Name of the block (must be registered in BlockRegistry)
+   */
+  setNamedBlock(x, y, z, blockName) {
+    // Check if this is a registered multi-sided block
+    if (this.blockRegistry.isMultiSidedBlock(blockName)) {
+      this.setBlock(x, y, z, BlockType.MULTI_SIDED, blockName);
+    } 
+    // Check if it's a special block like water
+    else if (blockName === 'water') {
+      this.setBlock(x, y, z, BlockType.WATER);
+    }
+    // Otherwise treat it as a standard block with a specific texture
+    else {
+      const blockData = {
+        blockType: BlockType.STANDARD,
+        textureType: blockName
+      };
+      this.worldData[`${x},${y},${z}`] = blockData;
+    }
   }
 
   hasBlock(x, y, z) {
     return !!this.worldData[`${x},${y},${z}`];
   };
 
+  /**
+   * Generate a full terrain with many types of blocks
+   * @param {number} worldSize - Size of the world (in blocks) from center
+   */
   generateTerrain(worldSize = 5) {
+    // Blocks are registered in the BlockRegistry constructor
+
     for (let x = -worldSize; x <= worldSize; x++) {
       for (let z = -worldSize; z <= worldSize; z++) {
-        // Create ground layer
-        this.setBlock(x, -1, z, BlockType.STANDARD); 
-
-        // Create water layer
-        if (Math.random() > 0.8) {
-          this.setBlock(x, 10, z, BlockType.WATER);
-        }
-
-        // Randomly add some blocks above ground
-        if (Math.random() > 0.8) {
-          const height = Math.floor(Math.random() * 20) + 1;
-          for (let y = 0; y < height; y++) {
-            this.setBlock(x, y, z, BlockType.STANDARD);
-          }
-        }
+        // Create ground layer using grass blocks (multi-sided)
+        this.setBlock(x, -1, z, BlockType.MULTI_SIDED, 'grass_block');
       }
+    }
+    
+    let validTextures = this.blockRegistry.defaultValidTextures;
+    // Add a column of every valid texture for testing
+    let y = 0;
+    for (let i = 0; i < Math.min(validTextures.length, 10); i++) {
+      let textureName = validTextures[i];
+      if (this.blockRegistry.isMultiSidedBlock(textureName)) {
+        this.setBlock(0, y, 0, BlockType.MULTI_SIDED, textureName);
+      } else {
+        this.setNamedBlock(0, y, 0, textureName);
+      }
+      
+      y++;
     }
   }
 
@@ -84,7 +129,17 @@ export class VoxelWorld {
         uvs: [],
         indices: [],
         currentIndex: 0
+      },
+      [BlockType.MULTI_SIDED]: {
+        positions: [],
+        normals: [],
+        uvs: [],
+        indices: [],
+        currentIndex: 0
       }
+
+
+
     };
 
     // Create geometry collections for all special block types
@@ -208,8 +263,8 @@ export class VoxelWorld {
         // Or if the current block is transparent (like water) and the neighbor is different
         const neighborInfo = this.worldData[neighborKey];
         const skipFace = neighborInfo && 
-          !(this.blockRegistry.isSpecialBlock(blockType) && 
-            neighborInfo.blockType !== blockType);
+          !(this.blockRegistry.isSpecialBlock(blockType) || blockType === BlockType.MULTI_SIDED) && 
+          neighborInfo.blockType !== blockType;
             
         if (skipFace) {
           continue;
@@ -220,14 +275,39 @@ export class VoxelWorld {
         if (blockType === BlockType.STANDARD) {
           // For standard blocks, use the assigned texture
           atlasUV = this.textureManager.getTexture(textureType);
-        } else if (blockType === BlockType.WATER) {
+        } 
+        else if (blockType === BlockType.MULTI_SIDED) {
+          // For multi-sided blocks, select texture based on the face direction
+          const blockName = blockInfo.blockName;
+          let faceName;
+          // Map direction key to face name
+          switch (dirKey) {
+            case 'py': faceName = Direction.TOP; break;
+            case 'ny': faceName = Direction.BOTTOM; break;
+            // case 'px': faceName = Direction.EAST; break;
+            // case 'nx': faceName = Direction.WEST; break;
+            // case 'pz': faceName = Direction.SOUTH; break;
+            // case 'nz': faceName = Direction.NORTH; break;
+            default: faceName = Direction.SIDES;
+          }
+          
+          // Get the texture for this face
+          const textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
+          
+          atlasUV = this.textureManager.getTexture(textureName);
+          
+          if (!atlasUV) {
+            continue;
+          }
+        } 
+        else if (blockType === BlockType.WATER) {
           // For water, we'll use a specific texture or a default one
           // Later the shader will handle the special effects
-
           atlasUV = this.textureManager.getTexture('acacia_door_bottom') || 
                     Object.values(this.textureManager.textureCache)[0];
         }
         
+        // Skip if no valid texture was found
         if (!atlasUV) continue;
 
         // Build the face positions
@@ -275,6 +355,34 @@ export class VoxelWorld {
         map: this.textureManager.atlasTexture,
         metalness: 0,
         roughness: 1
+      });
+
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.receiveShadow = true;
+      mesh.castShadow = true;
+      this.scene.add(mesh);
+      meshes.push(mesh);
+    }
+    
+    // Create multi-sided blocks mesh
+    const multiSidedCollection = geometryCollections[BlockType.MULTI_SIDED];
+    if (multiSidedCollection && multiSidedCollection.positions.length > 0) {
+      
+      const geo = new THREE.BufferGeometry();
+      geo.setIndex(new THREE.BufferAttribute(new Uint32Array(multiSidedCollection.indices), 1));
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(multiSidedCollection.positions), 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(multiSidedCollection.normals), 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(multiSidedCollection.uvs), 2));
+      geo.computeBoundingSphere();
+      
+      // Use the texture atlas with specific UV coordinates for each face
+      const mat = new THREE.MeshStandardMaterial({ 
+        map: this.textureManager.atlasTexture,
+        metalness: 0,
+        roughness: 1,
+        // Debug properties to help see texture issues
+        transparent: true,
+        side: THREE.DoubleSide
       });
 
       const mesh = new THREE.Mesh(geo, mat);

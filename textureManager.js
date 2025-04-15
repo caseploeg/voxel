@@ -47,10 +47,11 @@ export class TextureManager {
   }
 
   async load() {
+
     const loadedImages = await this._loadImages(this.texturePaths);
     const { canvas, atlasMapping } = this._createAtlasCanvas(loadedImages);
     this.atlasTexture = this._createAtlasTexture(canvas);
-    showTextureAtlas(canvas);
+    //showTextureAtlas(canvas);
     this.atlasMapping = atlasMapping;
     this.textureCache = this._createTextureMap(this.atlasTexture, this.atlasMapping);
     console.log(this.textureCache);
@@ -97,53 +98,55 @@ export class TextureManager {
   }
 
   _createAtlasCanvas(loadedImages) {
-
-    let totalWidth = 0;
-    let maxHeight = 0;
-
-    loadedImages.forEach(({ img }) => {
-      totalWidth += img.width;
-      maxHeight = Math.max(maxHeight, img.height);
-    });
-
-    // Create a canvas of the required size
+    // Create a grid layout instead of a single row to avoid exceeding WebGL limits
+    const MAX_WIDTH = 8096;  // Safe WebGL texture width limit
+    const MAX_HEIGHT = 8096; // Safe WebGL texture height limit
+    
+    // Calculate grid layout
+    const tileSize = 64; // Assuming most textures are 64x64 or smaller
+    const tilesPerRow = Math.floor(MAX_WIDTH / tileSize);
+    
+    // Create a canvas with limited size
     const canvas = document.createElement('canvas');
-    let hudCanvas = canvas;
-    hudCanvas.width = 64;
-    hudCanvas.height = 64;
-    hudCanvas.style.position = 'absolute';
-    hudCanvas.style.top = '10px';
-    hudCanvas.style.right = '10px';
-    hudCanvas.style.zIndex = '100';
-    document.body.appendChild(hudCanvas);
-
-    canvas.width = totalWidth;
-    canvas.height = maxHeight;
-
-    // Draw each image onto the canvas
+    canvas.width = Math.min(MAX_WIDTH, tilesPerRow * tileSize);
+    canvas.height = Math.min(MAX_HEIGHT, Math.ceil(loadedImages.length / tilesPerRow) * tileSize);
+    
+    // Create debug display
+    const debugCanvas = canvas.cloneNode(true);
+    debugCanvas.width = 64;
+    debugCanvas.height = 64;
+    debugCanvas.style.position = 'absolute';
+    debugCanvas.style.top = '10px';
+    debugCanvas.style.right = '10px';
+    debugCanvas.style.zIndex = '100';
+    document.body.appendChild(debugCanvas);
+    
+    // Draw each image onto the canvas in a grid
     const ctx = canvas.getContext('2d');
-
-    let currentX = 0;
     const atlasMapping = {}; // We'll store sub-rect info here
-
-    loadedImages.forEach(({ url, img }) => {
-      // Draw the image
-      ctx.drawImage(img, currentX, 0);
-
-      // Store the normalized UV offsets (0..1) for that image in the atlas
-      const u0 = currentX / totalWidth;
-      const v0 = 0;
-      const u1 = (currentX + img.width) / totalWidth;
-      const v1 = img.height / maxHeight;
-
+    
+    loadedImages.forEach(({ url, img }, index) => {
+      const row = Math.floor(index / tilesPerRow);
+      const col = index % tilesPerRow;
+      
+      const x = col * tileSize;
+      const y = row * tileSize;
+      
+      // Draw the image, scaling to fit the tile size if needed
+      ctx.drawImage(img, x, y, tileSize, tileSize);
+      
+      // Store normalized UV coordinates (0-1)
+      const u0 = x / canvas.width;
+      const v0 = y / canvas.height;
+      const u1 = (x + tileSize) / canvas.width;
+      const v1 = (y + tileSize) / canvas.height;
+      
       atlasMapping[url] = {
         offset: { x: u0, y: v0 },
-        size:   { x: (u1 - u0), y: (v1 - v0) }
+        size: { x: (u1 - u0), y: (v1 - v0) }
       };
-
-      // Move the draw cursor over
-      currentX += img.width;
     });
+    
     return { canvas, atlasMapping };
   }
 
@@ -176,16 +179,4 @@ export class TextureManager {
     
     return textures;
   }
-}
-function showTextureAtlas(canvas) {
-  const display = document.createElement('div');
-
-  display.width = 64;
-  display.height = 64;
-  display.style.position = 'absolute';
-  display.style.bottom = '100px';
-  display.style.left = '100px';
-  display.style.zIndex = '500';
-  display.appendChild(canvas.cloneNode(true));
-  document.body.appendChild(display);
 }
