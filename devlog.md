@@ -27,3 +27,8 @@
   - input handler
   - voxel world
 - getting ready for optimizations
+
+12:26pm tuesday
+- refactor, render manager
+- perf: culling unseen sides of the mesh
+- perf: building one mesh based on generated geometry

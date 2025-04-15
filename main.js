@@ -8,6 +8,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { TextureManager } from './textureManager.js';
 import { InputHandler } from './inputHandler.js'; 
 import { VoxelWorld } from './voxelWorld.js';  // <-- import our new class
+import { RenderManager } from './renderManager.js';
 
 import Stats from 'stats.js';
 const stats = new Stats();
@@ -23,7 +24,7 @@ const meta = import.meta.glob('/public/textures/*.png', {
 let texturePaths = Object.keys(meta).map(path => {
   const filename = path;
   return filename;
-}).slice(10,30);
+}).slice(290,300);
 
 export class Game {
   constructor() {
@@ -39,12 +40,17 @@ export class Game {
     // We'll create the VoxelWorld instance later
     this.voxelWorld = null;
     this.inputHandler = null;
+    this.renderManager = null;
+
+    this.debugMenuVisible = false;
+    this.debugMenuElement = null;
   }
 
   async initialize() {
     try {
       await this.textures.load();   // Load the atlas
       this.initScene();
+      this.createDebugMenu();
       this.animate();
     } catch (error) {
       console.error('Error in init:', error);
@@ -62,18 +68,14 @@ export class Game {
       0.1,
       1000
     );
-    camera.position.set(10, 10, 10);
+    camera.position.set(10, 50, 10);
     camera.lookAt(new THREE.Vector3(0, 0, 0));
-
-    // Create the WebGL renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: false });
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+    this.renderManager = new RenderManager(scene, camera);
 
     // Initialize and generate the voxel world
     this.voxelWorld = new VoxelWorld(scene, this.textures);
-    this.voxelWorld.generateTerrain(10);  // or a different size if you want
+    this.voxelWorld.generateTerrain(20);  // or a different size if you want
+    this.voxelWorld.buildCulledMesh();
 
     // Lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
@@ -84,68 +86,50 @@ export class Game {
     sunLight.castShadow = true;
     scene.add(sunLight);
 
-    // Postprocessing
-    const composer = new EffectComposer(renderer);
-    const renderPass = new RenderPass(scene, camera);
-    composer.addPass(renderPass);
-
-    const width = window.innerWidth, height = window.innerHeight;
-    const ssaoPass = new SSAOPass(scene, camera, width, height);
-    ssaoPass.kernelRadius = 1;
-    ssaoPass.minDistance = 0.005;
-    ssaoPass.maxDistance = 0.1;
-    composer.addPass(ssaoPass);
-
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(width, height),
-      0.5,
-      0.4,
-      0.85
-    );
-    composer.addPass(bloomPass);
-
     this.inputHandler = new InputHandler(camera, document.body, { movementSpeed: 5.0 });
 
 
     // Store references on the Game instance
     this.scene = scene;
     this.camera = camera;
-    this.renderer = renderer;
-    this.composer = composer;
   }
 
-  setupEventListeners(){
-    this.controls = new PointerLockControls(this.camera, document.body);
-    let movement = this.movement;
-
-    document.addEventListener('click', () => {
-      if (!this.controls.isLocked) {
-        this.controls.lock();
-      }
-    });
-
-    document.addEventListener('keydown', (event) => {
-      switch(event.code) {
-        case 'KeyW': movement.forward = true; break;
-        case 'KeyS': movement.back    = true; break;
-        case 'KeyA': movement.left   = true; break;
-        case 'KeyD': movement.right  = true; break;
-        case 'Space': movement.up    = true; break;
-        case 'ShiftLeft': movement.down  = true; break;
-      }
-    });
-
-    document.addEventListener('keyup', (event) => {
-      switch(event.code) {
-        case 'KeyW': movement.forward = false; break;
-        case 'KeyS': movement.back    = false; break;
-        case 'KeyA': movement.left    = false; break;
-        case 'KeyD': movement.right   = false; break;
-        case 'Space': movement.up     = false; break;
-        case 'ShiftLeft': movement.down = false; break;
-      }
-    });
+  createDebugMenu() {
+    this.debugMenuElement = document.createElement('div');
+    this.debugMenuElement.style.position = 'absolute';
+    this.debugMenuElement.style.top = '0';
+    this.debugMenuElement.style.left = '0';
+    this.debugMenuElement.style.padding = '8px';
+    this.debugMenuElement.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    this.debugMenuElement.style.color = '#fff';
+    this.debugMenuElement.style.fontFamily = 'monospace';
+    this.debugMenuElement.style.zIndex = '999';
+    this.debugMenuElement.style.display = 'none'; // start hidden
+    document.body.appendChild(this.debugMenuElement);
   }
+
+  // TOGGLE DEBUG MENU // <-- ADDED
+  toggleDebugMenu() {
+    this.debugMenuVisible = !this.debugMenuVisible;
+    this.debugMenuElement.style.display = this.debugMenuVisible ? 'block' : 'none';
+  }
+
+  updateDebugInfo() {
+    if (!this.debugMenuVisible) return;  // Only update if visible
+    const calls = this.renderer.info.render.calls;
+    const triangles = this.renderer.info.render.triangles;
+    const points = this.renderer.info.render.points;
+    const lines = this.renderer.info.render.lines;
+
+    // Update text (you can add more info as needed)
+    this.debugMenuElement.innerHTML = `
+      <strong>DEBUG INFO</strong><br/>
+      Draw Calls: ${calls}<br/>
+      Triangles: ${triangles}<br/>
+      Lines: ${lines}<br/>
+      Points: ${points}
+    `;
+  } 
 
   animate = () => {
     stats.begin();
@@ -155,8 +139,10 @@ export class Game {
     if (this.inputHandler) {
       this.inputHandler.update(delta);
     }
-
-    this.composer.render(this.scene, this.camera);
+    
+    if (this.renderManager) {
+      this.renderManager.render();
+    }
 
     stats.end();
     requestAnimationFrame(this.animate);
