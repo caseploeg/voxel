@@ -56,3 +56,6 @@
 - flowers :)) 
 - lighting should be disabled for CROSS blocks perhaps
 - need to refactor voxelworld
+
+7:27pm tuesday
+- refactor voxelworld into meshbuilder and world data classes
