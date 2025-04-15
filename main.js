@@ -21,6 +21,27 @@ const meta = import.meta.glob('/public/textures/*.png', {
   eager: true
 });
 
+const validBlockPatterns = [
+  // Basic block textures
+  'stone', 'dirt', 'grass', 'sand', 'gravel', 'poppy',
+  //'wood', 'log', 'planks', 'leaves',
+  
+  // Ores and valuable blocks
+  //'ore', 'diamond', 'gold', 'iron', 'coal',
+  
+  // Construction blocks
+  //'brick', 'cobble', 'glass', 'concrete',
+  
+  // Natural blocks
+  //'water', 'lava', 'snow', 'ice',
+  
+  // Additional blocks - add keywords as needed
+  //'wool', 'clay'
+  
+  // Add more patterns as needed
+];
+
+
 // Helper to check if a texture should be loaded
 const isValidTexture = (path) => {
   return validBlockPatterns.some(pattern => path.includes(pattern));
@@ -28,15 +49,8 @@ const isValidTexture = (path) => {
 
 // Select a reasonable subset of textures for initial load
 let texturePaths = Object.keys(meta)
+  .filter(isValidTexture)
   .map(path => path);
-
-// If we got too few textures, add some more
-if (texturePaths.length > 20) {
-  texturePaths = Object.keys(meta)
-    .slice(0,20)
-    .map(path => path);
-}
-
 
 export class Game {
   constructor() {

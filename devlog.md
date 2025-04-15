@@ -48,3 +48,11 @@
 5:28pm tuesday
 - add big warnings to block registry
 
+6:10pm tuesday
+- filter down atlas, there's a bug when there's too many textures
+
+6:51pm tuesday
+- add CROSS blocks
+- flowers :)) 
+- lighting should be disabled for CROSS blocks perhaps
+- need to refactor voxelworld

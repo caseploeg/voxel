@@ -56,8 +56,10 @@ export class VoxelWorld {
         blockData.blockName = blockName;
       }
     }
+    else if (blockType === BlockType.CROSS) {
+        blockData.textureType = 'poppy'; 
+    }
     // For water blocks, we don't need a texture type
-
     this.worldData[`${x},${y},${z}`] = blockData;
   }
   
@@ -96,12 +98,14 @@ export class VoxelWorld {
    * @param {number} worldSize - Size of the world (in blocks) from center
    */
   generateTerrain(worldSize = 5) {
+    // "rose" is just the texture name in your atlas
     // Blocks are registered in the BlockRegistry constructor
 
     for (let x = -worldSize; x <= worldSize; x++) {
       for (let z = -worldSize; z <= worldSize; z++) {
         // Create ground layer using grass blocks (multi-sided)
         this.setBlock(x, -1, z, BlockType.MULTI_SIDED, 'grass_block');
+        this.setBlock(x, 0, z, BlockType.CROSS, 'poppy');
       }
     }
     
@@ -120,6 +124,89 @@ export class VoxelWorld {
     }
   }
 
+
+  _buildCrossBlock(collection, x, y, z, textureName) {
+    // 1. Get the atlas UV for this texture
+    const atlasUV = this.textureManager.getTexture(textureName);
+    if (!atlasUV) return;
+
+    // 2. We’ll define two quads. Each quad has 4 positions, 4 normals, 4 UVs, and 6 indices.
+    //    Let’s assume the flower is 1 block tall. You can tweak halfSize, height, etc.
+    const halfSize = 0.4;
+    const bottom = y;
+    const top    = y + 1.0;
+    
+    // Typically we center it at x+0.5, z+0.5
+    const cx = x + 0.5;
+    const cz = z + 0.5;
+    
+    // The cross-plane is basically 2 quads:
+    // Quad1: diagonal ↖ to ↘
+    // Quad2: diagonal ↗ to ↙
+    // You can define their corners like this:
+
+    // -- Quad1 positions (A,B,C,D)
+    const A = [cx - halfSize, bottom, cz - halfSize];
+    const B = [cx + halfSize, bottom, cz + halfSize];
+    const C = [cx + halfSize, top,    cz + halfSize];
+    const D = [cx - halfSize, top,    cz - halfSize];
+
+    // -- Quad2 positions (E,F,G,H)
+    const E = [cx - halfSize, bottom, cz + halfSize];
+    const F = [cx + halfSize, bottom, cz - halfSize];
+    const G = [cx + halfSize, top,    cz - halfSize];
+    const H = [cx - halfSize, top,    cz + halfSize];
+
+    // For each quad, push the geometry with a little helper:
+    this._pushQuad(collection, [A,B,C,D], atlasUV);
+    this._pushQuad(collection, [E,F,G,H], atlasUV);
+  }
+
+  _pushQuad(collection, positions, atlasUV) {
+    // Every vertex in a cross-plane typically has the same normal if you want lighting, 
+    // but you can just set it to e.g. +Y or average normal. 
+    // Or you can compute face normals. 
+    // Typically for something like grass or flowers, you might not care about perfect lighting. 
+    // For simplicity, we’ll store a normal pointing up (0,1,0). 
+    // Or you can create per-vertex normals for each side. 
+    const faceNormal = [0,1,0];
+
+    // Just a standard square UV: (0,0), (1,0), (1,1), (0,1)
+    // We'll multiply by atlasUV.repeat and add atlasUV.offset to each corner
+    // so that the correct portion of the atlas is used.
+    const { offset, repeat } = atlasUV;
+    const uvA = [offset.x,             offset.y            ];
+    const uvB = [offset.x + repeat.x,  offset.y            ];
+    const uvC = [offset.x + repeat.x,  offset.y + repeat.y ];
+    const uvD = [offset.x,             offset.y + repeat.y ];
+
+    // Current index offset
+    const baseIndex = collection.currentIndex;
+
+    // push each vertex
+    for (let i = 0; i < 4; i++) {
+      const vertPos = positions[i];
+      const vertNormal = faceNormal;
+      let vertUV;
+      if      (i === 0) vertUV = uvA;
+      else if (i === 1) vertUV = uvB;
+      else if (i === 2) vertUV = uvC;
+      else if (i === 3) vertUV = uvD;
+      
+      collection.positions.push(...vertPos);
+      collection.normals.push(...vertNormal);
+      collection.uvs.push(...vertUV);
+    }
+
+    // Two triangles for the quad: (0,1,2) and (2,3,0)
+    collection.indices.push(
+      baseIndex, baseIndex+1, baseIndex+2,
+      baseIndex+2, baseIndex+3, baseIndex
+    );
+    
+    collection.currentIndex += 4;
+  }
+
   buildCulledMesh() {
     // Create separate collections for different block types
     const geometryCollections = {
@@ -136,10 +223,14 @@ export class VoxelWorld {
         uvs: [],
         indices: [],
         currentIndex: 0
+      },
+      [BlockType.CROSS]: { 
+        positions: [],
+        normals: [],
+        uvs: [],
+        indices: [],
+        currentIndex: 0
       }
-
-
-
     };
 
     // Create geometry collections for all special block types
@@ -276,6 +367,11 @@ export class VoxelWorld {
           // For standard blocks, use the assigned texture
           atlasUV = this.textureManager.getTexture(textureType);
         } 
+        else if (blockType === BlockType.CROSS) {
+          const collection = geometryCollections[BlockType.CROSS];
+          this._buildCrossBlock(collection, x, y, z, textureType);
+          continue;
+        }
         else if (blockType === BlockType.MULTI_SIDED) {
           // For multi-sided blocks, select texture based on the face direction
           const blockName = blockInfo.blockName;
@@ -339,7 +435,33 @@ export class VoxelWorld {
 
     // Create meshes for each block type
     const meshes = [];
-    
+ 
+    const crossColl = geometryCollections[BlockType.CROSS];
+    if (crossColl.positions.length > 0) {
+      const geo = new THREE.BufferGeometry();
+      geo.setIndex(new THREE.BufferAttribute(new Uint32Array(crossColl.indices), 1));
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(crossColl.positions), 3));
+      geo.setAttribute('normal',   new THREE.BufferAttribute(new Float32Array(crossColl.normals), 3));
+      geo.setAttribute('uv',      new THREE.BufferAttribute(new Float32Array(crossColl.uvs), 2));
+      geo.computeBoundingSphere();
+
+      // Make an alphaTest material
+      const mat = new THREE.MeshStandardMaterial({
+        map: this.textureManager.atlasTexture,
+        alphaTest: 0.5,
+        side: THREE.DoubleSide,
+        metalness: 0,
+        roughness: 1
+      });
+
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.receiveShadow = true;
+      mesh.castShadow = false;  // or true, up to you
+      this.scene.add(mesh);
+      meshes.push(mesh);
+    }
+      
+
     // Create standard blocks mesh
     const standardCollection = geometryCollections[BlockType.STANDARD];
     if (standardCollection.positions.length > 0) {

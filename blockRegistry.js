@@ -5,7 +5,8 @@ import * as THREE from 'three';
 export const BlockType = {
   STANDARD: 'standard',
   WATER: 'water',
-  MULTI_SIDED: 'multi_sided'
+  MULTI_SIDED: 'multi_sided',
+  CROSS: 'cross'
 };
 
 // Direction enum to use for multi-sided blocks
@@ -62,7 +63,11 @@ export class BlockRegistry {
    * @returns {boolean} True if the block needs special rendering
    */
   isSpecialBlock(blockType) {
-    return !!this.specialBlocks[blockType];
+    return (
+      !!this.specialBlocks[blockType] ||
+      blockType === BlockType.WATER  ||
+      blockType === BlockType.CROSS
+    );
   }
 
   /**
@@ -170,9 +175,9 @@ export class BlockRegistry {
   registerDefaultBlocks() {
     // Grass block (example placeholders)
     this.registerMultiSidedBlock('grass_block', {
-      [Direction.TOP]: 'snow',
-      [Direction.SIDES]: 'anvil',
-      [Direction.BOTTOM]: 'andesite'
+      [Direction.TOP]: 'grass_block_top',
+      [Direction.SIDES]: 'grass_block_side',
+      [Direction.BOTTOM]: 'dirt'
     });
 
     // Oak log
