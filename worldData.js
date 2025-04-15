@@ -70,19 +70,5 @@ export class WorldData {
         this.setBlock(x, 0, z, BlockType.CROSS, 'poppy');
       }
     }
-    
-    let validTextures = this.blockRegistry.defaultValidTextures;
-    // Add a column of every valid texture for testing
-    let y = 0;
-    for (let i = 0; i < Math.min(validTextures.length, 10); i++) {
-      let textureName = validTextures[i];
-      if (this.blockRegistry.isMultiSidedBlock(textureName)) {
-        this.setBlock(0, y, 0, BlockType.MULTI_SIDED, textureName);
-      } else {
-        this.setNamedBlock(0, y, 0, textureName);
-      }
-      
-      y++;
-    }
   }
 }
