@@ -3,25 +3,28 @@
 
 // Import all terrain generator algorithms
 import { AdvancedTerrain as PerlinTerrain, BLOCK as PERLIN_BLOCK } from './perlin.js';
-import { AdvancedDensityTerrain, BLOCK as DENSITY_BLOCK } from './improvedPerlin.js';
+import { DemoTerrain, BLOCK as DEMO_BLOCK } from './demo.js';
+//import { AdvancedDensityTerrain, BLOCK as DENSITY_BLOCK } from './improvedPerlin.js';
 
 // Supported terrain generator types
 export const TERRAIN_TYPE = {
   PERLIN: 'perlin',          // Original perlin-based terrain
-  DENSITY: 'density'         // New density function-based terrain
+  DENSITY: 'density',         // New density function-based terrain
+  DEMO: 'demo'
 };
 
 // Default block mapping for each terrain generator
 const DEFAULT_BLOCK_MAPPINGS = {
   [TERRAIN_TYPE.PERLIN]: {
     [PERLIN_BLOCK.AIR]: null,
-    [PERLIN_BLOCK.GRASS]: "grass",
-    [PERLIN_BLOCK.DIRT]: "dirt",
+    [PERLIN_BLOCK.GRASS]: "grass_block", // Use multi-sided grass_block
+    [PERLIN_BLOCK.DIRT]: "dirt", 
     [PERLIN_BLOCK.STONE]: "stone",
     [PERLIN_BLOCK.WATER]: "water",
-    [PERLIN_BLOCK.WOOD]: "stone",  // Would be "log" in a real implementation
-    [PERLIN_BLOCK.LEAVES]: "stone" // Would be "leaves" in a real implementation
+    [PERLIN_BLOCK.WOOD]: "oak_log",       // Use multi-sided oak_log
+    [PERLIN_BLOCK.LEAVES]: "oak_leaves"   // Use tinted oak_leaves
   },
+  /*
   [TERRAIN_TYPE.DENSITY]: {
     [DENSITY_BLOCK.AIR]: null,
     [DENSITY_BLOCK.GRASS]: "grass",
@@ -30,6 +33,7 @@ const DEFAULT_BLOCK_MAPPINGS = {
     [DENSITY_BLOCK.SAND]: "sand",
     [DENSITY_BLOCK.WATER]: "water"
   }
+  */
 };
 
 /**
@@ -45,12 +49,25 @@ export class TerrainGeneratorFactory {
   static createGenerator(type = TERRAIN_TYPE.PERLIN, seed = Math.random()) {
     let generator;
     let blockMapping;
+    /*
+    generator = new DemoTerrain(seed);
+    blockMapping = DEFAULT_BLOCK_MAPPINGS[TERRAIN_TYPE.PERLIN];
+    return {
+        generator,
+        blockMapping
+    };
+    */
     
     switch (type) {
       case TERRAIN_TYPE.DENSITY:
         generator = new AdvancedDensityTerrain(seed);
         blockMapping = DEFAULT_BLOCK_MAPPINGS[TERRAIN_TYPE.DENSITY];
         break;
+      case TERRAIN_TYPE.DEMO:
+        generator = new DemoTerrain(seed);
+        blockMapping = DEFAULT_BLOCK_MAPPINGS[TERRAIN_TYPE.PERLIN];
+        break;
+
         
       case TERRAIN_TYPE.PERLIN:
       default:
@@ -93,8 +110,8 @@ export class TerrainGeneratorFactory {
   }
 }
 
-// Re-export the generate terrain functions from both implementations
-import { generateTerrain } from './perlin.js'; 
 
 // Export the block types from both generators for reference
+//export { PERLIN_BLOCK, DENSITY_BLOCK };
+const DENSITY_BLOCK = null;
 export { PERLIN_BLOCK, DENSITY_BLOCK };

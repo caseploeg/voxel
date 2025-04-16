@@ -2,8 +2,7 @@
 // Advanced Voxel Terrain Generation with Perlin Noise (Three.js Minecraft-Style)
 // This implementation uses an external Perlin noise library (e.g. noisejs).
 // Make sure to install and import the noise library appropriately:
-//    npm install noisejs
-// and include it in your project.
+//    npm install noisejs // and include it in your project.
 
 import { Noise } from 'noisejs';
 
@@ -24,17 +23,17 @@ class AdvancedTerrain {
     this.noise = new Noise(seed);
     this.seed = seed;
     // Terrain generation parameters
-    this.seaLevel = 20;
+    this.seaLevel = 10;
     this.minHeight = 0;
-    this.maxHeight = 35;
+    this.maxHeight = 20;
     
     // Height map parameters (multi-octave noise)
-    this.heightFreq = 0.3;   // base frequency for terrain height
-    this.heightAmp = 10;     // amplitude added atop sea level
+    this.heightFreq = 30;   // base frequency for terrain height
+    this.heightAmp = 100;     // amplitude added atop sea level
     
     // Cave noise parameters
-    this.caveFreq = 0.8;
-    this.caveThreshold = 0.6;  // noise value above which a voxel is carved out
+    this.caveFreq = 0.0;
+    this.caveThreshold = 0.0;  // noise value above which a voxel is carved out
     
     // Additional parameters can be added here (for biomes, humidity, etc.)
   }
@@ -49,8 +48,8 @@ class AdvancedTerrain {
     let total = 0;
     const octaves = 4;
     const persistence = 0.5;
-    let frequency = this.heightFreq;
-    let amplitude = this.heightAmp;
+    let frequency = 0.01; // Lower frequency for smoother terrain
+    let amplitude = 10;   // Lower amplitude for less extreme height differences
     
     for (let i = 0; i < octaves; i++) {
       total += this.noise.perlin2(x * frequency, z * frequency) * amplitude;
@@ -70,8 +69,10 @@ class AdvancedTerrain {
    * @returns {Array} - A 3D array representing voxel block IDs.
    */
   generateChunk(chunkX, chunkZ, chunkSize) {
-    // Predefine the vertical dimension as maxHeight plus a buffer.
-    const heightDimension = this.maxHeight + 10;
+    // Simple fixed height terrain with a checker pattern
+    const heightDimension = 20;
+    const terrainHeight = 10; // Fixed height for debugging
+    
     // Create a 3D array: chunk[x][z][y] where y is the vertical axis.
     let chunk = [];
     for (let x = 0; x < chunkSize; x++) {
@@ -81,62 +82,31 @@ class AdvancedTerrain {
       }
     }
     
-    // Fill the terrain using a heightmap based on 2D Perlin noise.
+    // Fill with a simple checker pattern of grass and stone
     for (let x = 0; x < chunkSize; x++) {
       for (let z = 0; z < chunkSize; z++) {
-        // Convert local chunk coordinates to global/world coordinates.
+        // Convert local chunk coordinates to global/world coordinates
         const worldX = chunkX * chunkSize + x;
         const worldZ = chunkZ * chunkSize + z;
-        const terrainHeight = this.getHeight(worldX, worldZ);
         
-        // Fill each column voxel-by-voxel.
-        for (let y = 0; y < heightDimension; y++) {
-          if (y < terrainHeight) {
-            // Lower layers: stone deep underground; near surface: dirt and then grass.
-            if (y < terrainHeight - 5) {
-              chunk[x][z][y] = BLOCK.STONE;
-            } else if (y < terrainHeight - 1) {
-              chunk[x][z][y] = BLOCK.DIRT;
-            } else {
-              // Top layer: if below sea level, use dirt instead of grass.
-              chunk[x][z][y] = (terrainHeight < this.seaLevel + 1) ? BLOCK.DIRT : BLOCK.GRASS;
-            }
+        // Checker pattern (alternating grass and stone)
+        const isGrass = (worldX + worldZ) % 2 === 0;
+        
+        // Fill each column with a single block type
+        for (let y = 0; y < terrainHeight; y++) {
+          if (y < 5) {
+            // Bottom layer is always stone
+            chunk[x][z][y] = BLOCK.STONE;
+          } else if (y < terrainHeight - 1) {
+            // Middle layers alternate between stone and dirt
+            chunk[x][z][y] = BLOCK.DIRT;
           } else {
-            // For voxels above the height, fill with water if below sea level.
-            if (y < this.seaLevel) {
-              chunk[x][z][y] = BLOCK.WATER;
-            }
+            // Top layer is grass or stone in a checker pattern
+            chunk[x][z][y] = isGrass ? BLOCK.GRASS : BLOCK.STONE;
           }
         }
       }
     }
-    
-    // Carve caves and overhangs via 3D noise.
-    for (let x = 0; x < chunkSize; x++) {
-      for (let z = 0; z < chunkSize; z++) {
-        for (let y = 0; y < heightDimension; y++) {
-          const worldX = chunkX * chunkSize + x;
-          const worldY = y;
-          const worldZ = chunkZ * chunkSize + z;
-          const caveValue = this.noise.perlin3(
-            worldX * this.caveFreq,
-            worldY * this.caveFreq,
-            worldZ * this.caveFreq
-          );
-          // Carve out a cave if the noise value is high (and keep surface water intact).
-          if (caveValue > this.caveThreshold && y < (this.seaLevel + 10)) {
-
-            chunk[x][z][y] = BLOCK.AIR;
-            if (chunk[x][z][y] !== BLOCK.WATER) {
-              chunk[x][z][y] = BLOCK.AIR;
-            }
-          }
-        }
-      }
-    }
-    
-    // Decorate the terrain with procedural structures such as stone trees and castles.
-    this.placeStructures(chunk, chunkX, chunkZ, chunkSize, heightDimension);
     
     return chunk;
   }
@@ -208,81 +178,6 @@ class AdvancedTerrain {
       }
     }
     return flat;
-  }
-  
-  /**
-   * Generates a simple "stone tree" with a trunk and a basic canopy.
-   * @param {Array} chunk - The voxel chunk 3D array.
-   * @param {number} x - Local x in chunk.
-   * @param {number} y - Starting y for the tree (one above the surface).
-   * @param {number} z - Local z in chunk.
-   * @param {number} heightDimension - Maximum vertical index in the chunk.
-   */
-  generateStoneTree(chunk, x, y, z, heightDimension) {
-    const treeHeight = 4;
-    // Create a trunk of stone blocks.
-    for (let i = 0; i < treeHeight; i++) {
-      if (y + i < heightDimension) {
-        chunk[x][z][y + i] = BLOCK.STONE;
-      }
-    }
-    // Create a simple canopy with "leaves" in a cube pattern.
-    const canopySize = 2;
-    for (let dx = -canopySize; dx <= canopySize; dx++) {
-      for (let dz = -canopySize; dz <= canopySize; dz++) {
-        for (let dy = 0; dy <= canopySize; dy++) {
-          const nx = x + dx;
-          const ny = y + treeHeight - 1 + dy;
-          const nz = z + dz;
-          if (nx >= 0 && nx < chunk.length &&
-              nz >= 0 && nz < chunk[0].length &&
-              ny < heightDimension) {
-            if (chunk[nx][nz][ny] === BLOCK.AIR) {
-              chunk[nx][nz][ny] = BLOCK.LEAVES;
-            }
-          }
-        }
-      }
-    }
-  }
-  
-  /**
-   * Generates a rudimentary castle structure.
-   * For demonstration, this builds a 5x5 platform with stone walls.
-   * @param {Array} chunk - The voxel chunk 3D array.
-   * @param {number} x - Local x in chunk (center point for the structure).
-   * @param {number} y - Starting y for the structure.
-   * @param {number} z - Local z in chunk.
-   * @param {number} chunkSize - Size of the chunk.
-   * @param {number} heightDimension - Maximum vertical index in the chunk.
-   */
-  generateCastle(chunk, x, y, z, chunkSize, heightDimension) {
-    const castleSize = 5;
-    const halfSize = Math.floor(castleSize / 2);
-    // Build a flat castle platform with 3-block-high stone walls.
-    for (let i = 0; i < castleSize; i++) {
-      for (let j = 0; j < castleSize; j++) {
-        const cx = x + i - halfSize;
-        const cz = z + j - halfSize;
-        if (cx >= 0 && cx < chunkSize && cz >= 0 && cz < chunkSize) {
-          // Create walls along the perimeter.
-          if (i === 0 || i === castleSize - 1 || j === 0 || j === castleSize - 1) {
-            for (let k = 0; k < 3; k++) {
-              if (y + k < heightDimension) {
-                chunk[cx][cz][y + k] = BLOCK.STONE;
-              }
-            }
-          } else {
-            // Keep the interior hollow.
-            for (let k = 0; k < 3; k++) {
-              if (y + k < heightDimension) {
-                chunk[cx][cz][y + k] = BLOCK.AIR;
-              }
-            }
-          }
-        }
-      }
-    }
   }
 }
 

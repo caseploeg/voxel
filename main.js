@@ -354,12 +354,26 @@ export class Game {
     }
 
     let buildAvg = 0, buildMax = 0, buildMin = 0, buildCount = 0, buildLast = 0;
+    let workerTime = 0, mainThreadTime = 0, lastWorkerTime = 0, lastMainThreadTime = 0;
     if (this.voxelWorld?.buildStats && this.voxelWorld.buildStats.totalMeshes > 0) {
       buildCount = this.voxelWorld.buildStats.totalMeshes;
       buildAvg = (this.voxelWorld.buildStats.totalTime / buildCount).toFixed(2);
       buildMax = this.voxelWorld.buildStats.maxTime.toFixed(2);
       buildMin = this.voxelWorld.buildStats.minTime.toFixed(2);
       buildLast = this.voxelWorld.buildStats.lastTime.toFixed(2);
+      
+      // Get worker vs main thread times
+      workerTime = this.voxelWorld.buildStats.workerTime || 0;
+      mainThreadTime = this.voxelWorld.buildStats.mainThreadTime || 0;
+      lastWorkerTime = this.voxelWorld.buildStats.lastWorkerTime || 0;
+      lastMainThreadTime = this.voxelWorld.buildStats.lastMainThreadTime || 0;
+      
+      const workerAvg = buildCount > 0 ? (workerTime / buildCount).toFixed(2) : 0;
+      const mainAvg = buildCount > 0 ? (mainThreadTime / buildCount).toFixed(2) : 0;
+      
+      // Store for display
+      workerTime = workerAvg;
+      mainThreadTime = mainAvg;
     }
 
     // Update text (you can add more info as needed)
@@ -379,6 +393,7 @@ export class Game {
       <strong>Performance (ms):</strong><br/>
       Generation: avg=${chunkGenAvg} min=${chunkGenMin} max=${chunkGenMax} (${chunkGenCount})<br/>
       Mesh Build: avg=${buildAvg} min=${buildMin} max=${buildMax} last=${buildLast} (${buildCount})<br/>
+      Worker/Main: worker=${workerTime} main=${mainThreadTime} last=${lastWorkerTime}/${lastMainThreadTime}<br/>
       <small>Press F3 to hide/show debug</small>
       <small>Press F5 to toggle water shader</small>
       <small>Press F6 to toggle chunk rendering</small>

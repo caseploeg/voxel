@@ -123,24 +123,16 @@ function generateChunk(chunkX, chunkZ, chunkSize) {
   // Fill the chunk with blocks based on the terrain generator's algorithms
   for (let x = 0; x < chunkSize; x++) {
     for (let z = 0; z < chunkSize; z++) {
-      // Get the height at this position using the noise generator
-      const height = getHeight(worldX + x, worldZ + z);
-      
-      // Fill blocks below the height with appropriate block types
-      for (let y = 0; y < height && y < heightDimension; y++) {
-        chunkData[x][z][y] = getBlockType(worldX + x, y, worldZ + z, height);
+    
+      if (Math.random() > 0.5) {
+        chunkData[x][z][0] = 1; // 4 = water
       }
       
-      // Add water at or below sea level
-      const seaLevel = terrainGen.params?.seaLevel || 20;
-      for (let y = height; y < seaLevel && y < heightDimension; y++) {
-        chunkData[x][z][y] = 4; // 4 = water
-      }
     }
   }
   
   // Add caves and structures
-  addCaves(chunkData, chunkX, chunkZ, chunkSize);
+  //addCaves(chunkData, chunkX, chunkZ, chunkSize);
   
   return chunkData;
 }
@@ -162,6 +154,8 @@ function getHeight(worldX, worldZ) {
 // Get the block type at the given world coordinates
 function getBlockType(worldX, worldY, worldZ, surfaceHeight) {
   // Default block types if terrainGen is not available
+  return 0;
+
   if (!terrainGen) {
     return worldY < 5 ? 3 : 2; // 3 = stone, 2 = dirt
   }

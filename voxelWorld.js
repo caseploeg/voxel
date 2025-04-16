@@ -6,8 +6,9 @@ import { BlockRegistry, BlockType } from './blockRegistry.js';
 import * as THREE from 'three';
 // Import terrain generator factory 
 import { TerrainGeneratorFactory, TERRAIN_TYPE, PERLIN_BLOCK, DENSITY_BLOCK } from './terrainGenerator.js';
-// Import the worker-based chunk generation manager
+// Import the worker-based chunk and geometry managers
 import { ChunkGenerationManager } from './workers/chunkManager.js';
+import { GeometryManager } from './workers/geometryManager.js';
 
 export class VoxelWorld {
   constructor(scene, textureManager, terrainType = TERRAIN_TYPE.PERLIN) {
@@ -37,16 +38,33 @@ export class VoxelWorld {
     // Create the worker-based chunk generation manager
     this.chunkGenManager = new ChunkGenerationManager(this.terrainGen, this.BLOCK_NAME_MAP);
     
+    // Create the geometry worker manager
+    this.geometryManager = new GeometryManager(scene, textureManager, this.blockRegistry);
+    // Store a reference to textureManager so we can use it later
+    this.textureManager = textureManager;
+    
     // Chunk queue for processing newly generated chunks
     this.chunkQueue = [];
     this.isProcessingChunkQueue = false;
     
-    // Track chunks being generated
+    // Geometry queue for tracking mesh building
+    this.geometryQueue = [];
+    this.geometryStats = {
+      totalBuilds: 0,
+      workerTime: 0,
+      mainThreadTime: 0
+    };
+    
+    // Track chunks being generated/built
     this.chunksBeingGenerated = new Set();
+    this.chunksBeingBuilt = new Set();
     
     // Initialize the workers (not awaited to avoid blocking constructor)
-    this.chunkGenManager.initialize().catch(error => {
-      console.error('Failed to initialize chunk workers:', error);
+    Promise.all([
+      this.chunkGenManager.initialize(),
+      this.geometryManager.initialize()
+    ]).catch(error => {
+      console.error('Failed to initialize workers:', error);
     });
   }
   
@@ -76,14 +94,30 @@ export class VoxelWorld {
     // Recreate the chunk manager with the new generator
     this.chunkGenManager = new ChunkGenerationManager(this.terrainGen, this.BLOCK_NAME_MAP);
     
+    // Also shutdown and recreate the geometry manager
+    this.geometryManager.shutdown();
+    this.geometryManager = new GeometryManager(this.scene, this.textureManager, this.blockRegistry);
+    
     // Reset chunk generation state
     this.chunkQueue = [];
     this.isProcessingChunkQueue = false;
     this.chunksBeingGenerated = new Set();
+    this.chunksBeingBuilt = new Set();
+    this.geometryQueue = [];
+    
+    // Reset statistics
+    this.geometryStats = {
+      totalBuilds: 0,
+      workerTime: 0,
+      mainThreadTime: 0
+    };
     
     // Initialize the workers again
-    this.chunkGenManager.initialize().catch(error => {
-      console.error('Failed to initialize chunk workers:', error);
+    Promise.all([
+      this.chunkGenManager.initialize(),
+      this.geometryManager.initialize()
+    ]).catch(error => {
+      console.error('Failed to initialize workers:', error);
     });
     
     return this.terrainType;
@@ -213,7 +247,16 @@ export class VoxelWorld {
             const blockName = this.BLOCK_NAME_MAP[blockType];
             if (blockName) {
               // Map PERLIN_BLOCK to BlockType
-              const blockTypeEnum = blockType === PERLIN_BLOCK.WATER ? BlockType.WATER : BlockType.STANDARD;
+              let blockTypeEnum;
+              
+              // Handle special cases for different block types
+              if (blockType === PERLIN_BLOCK.WATER) {
+                blockTypeEnum = BlockType.WATER;
+              } else if (blockName === 'grass_block') {
+                blockTypeEnum = BlockType.MULTI_SIDED;
+              } else {
+                blockTypeEnum = BlockType.STANDARD;
+              }
               
               // Add to chunk-based storage
               this.chunkManager.setBlock(globalX, globalY, globalZ, blockTypeEnum, blockName);
@@ -346,43 +389,207 @@ export class VoxelWorld {
   }
   
   // Rebuild just one chunk's mesh
-  rebuildChunkMesh(chunkX, chunkZ) {
-    const startTime = performance.now();
-    
-    // Remove existing chunk mesh
-    this.meshBuilder.removeChunkMesh(this.scene, chunkX, chunkZ);
-    
-    // Get chunk data
-    const chunkData = this.chunkManager.getChunk(chunkX, chunkZ);
-    
-    // Build new mesh for just this chunk
-    const meshes = this.meshBuilder.buildChunkMesh(chunkData, this.scene, chunkX, chunkZ, this.chunkManager.chunkSize);
-    
-    const endTime = performance.now();
-    const buildTime = endTime - startTime;
-    
-    // Track mesh building performance metrics
-    if (!this.buildStats) {
-      this.buildStats = {
-        totalMeshes: 0,
-        totalTime: 0,
-        maxTime: 0,
-        minTime: Number.MAX_SAFE_INTEGER,
-        lastTime: 0
-      };
+  async rebuildChunkMesh(chunkX, chunkZ) {
+    // Skip if this chunk is already being built
+    const chunkKey = `${chunkX},${chunkZ}`;
+    if (this.chunksBeingBuilt.has(chunkKey)) {
+      return null;
     }
     
-    this.buildStats.totalMeshes++;
-    this.buildStats.totalTime += buildTime;
-    this.buildStats.maxTime = Math.max(this.buildStats.maxTime, buildTime);
-    this.buildStats.minTime = Math.min(this.buildStats.minTime, buildTime);
-    this.buildStats.lastTime = buildTime;
+    // Mark this chunk as being built
+    this.chunksBeingBuilt.add(chunkKey);
+    
+    try {
+      // Remove existing chunk mesh
+      this.meshBuilder.removeChunkMesh(this.scene, chunkX, chunkZ);
+      
+      // Get chunk data
+      const chunkData = this.chunkManager.getChunk(chunkX, chunkZ);
+      if (!chunkData) {
+        this.chunksBeingBuilt.delete(chunkKey);
+        return null;
+      }
+      
+      // Update player position for prioritization
+      if (this.camera) {
+        this.geometryManager.updatePlayerPosition(this.camera.position.x, this.camera.position.z);
+      }
+      
+      // Request geometry from the worker
+      const result = await this.geometryManager.requestGeometry(
+        chunkData.worldData, // The actual blocks data
+        chunkX,
+        chunkZ,
+        this.chunkManager.chunkSize
+      );
+      
+      // When geometry is ready, build the mesh on the main thread
+      const mainThreadStart = performance.now();
+      
+      // Create buffer geometries from the typed arrays
+      const meshes = this._createMeshesFromGeometryBuffers(
+        result.geometryBuffers,
+        chunkX,
+        chunkZ
+      );
+      
+      const mainThreadEnd = performance.now();
+      const mainThreadTime = mainThreadEnd - mainThreadStart;
+      
+      // Track mesh building performance metrics
+      if (!this.buildStats) {
+        this.buildStats = {
+          totalMeshes: 0,
+          totalTime: 0,
+          maxTime: 0,
+          minTime: Number.MAX_SAFE_INTEGER,
+          lastTime: 0,
+          workerTime: 0,
+          mainThreadTime: 0
+        };
+      }
+      
+      this.buildStats.totalMeshes++;
+      this.buildStats.totalTime += result.buildTime + mainThreadTime;
+      this.buildStats.workerTime += result.buildTime;
+      this.buildStats.mainThreadTime += mainThreadTime;
+      this.buildStats.maxTime = Math.max(this.buildStats.maxTime, result.buildTime + mainThreadTime);
+      this.buildStats.minTime = Math.min(this.buildStats.minTime, result.buildTime + mainThreadTime);
+      this.buildStats.lastTime = result.buildTime + mainThreadTime;
+      this.buildStats.lastWorkerTime = result.buildTime;
+      this.buildStats.lastMainThreadTime = mainThreadTime;
+      
+      // Remove from being built
+      this.chunksBeingBuilt.delete(chunkKey);
+      
+      return meshes;
+    } catch (error) {
+      console.error(`Error building chunk mesh at ${chunkX},${chunkZ}:`, error);
+      this.chunksBeingBuilt.delete(chunkKey);
+      return null;
+    }
+  }
+  
+  // Create THREE.js meshes from geometry buffers received from workers
+  _createMeshesFromGeometryBuffers(geometryBuffers, chunkX, chunkZ) {
+    const meshes = [];
+    const chunkGroup = new THREE.Group();
+    
+    // Add chunk info to the group
+    chunkGroup.userData = { 
+      isChunk: true,
+      chunkX, 
+      chunkZ,
+      key: `${chunkX},${chunkZ}`
+    };
+    
+    // Create standard mesh if it exists
+    if (geometryBuffers.standard) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(geometryBuffers.standard.positions, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(geometryBuffers.standard.normals, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(geometryBuffers.standard.uvs, 2));
+      geo.setIndex(new THREE.BufferAttribute(geometryBuffers.standard.indices, 1));
+      geo.computeBoundingSphere();
+      
+      // Use the combined atlas texture from the TextureManager
+      const mat = new THREE.MeshStandardMaterial({ 
+        map: this.textureManager.atlasTexture,
+        metalness: 0,
+        roughness: 1
+      });
+      
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.receiveShadow = true;
+      mesh.castShadow = true;
+      chunkGroup.add(mesh);
+      meshes.push(mesh);
+    }
+    
+    // Create water mesh if it exists
+    if (geometryBuffers.water) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(geometryBuffers.water.positions, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(geometryBuffers.water.normals, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(geometryBuffers.water.uvs, 2));
+      geo.setIndex(new THREE.BufferAttribute(geometryBuffers.water.indices, 1));
+      geo.computeBoundingSphere();
+      
+      // Get a water texture from the atlas or use the first available texture
+      const waterUV = this.textureManager.getTexture('packed_ice');
+      
+      // Create the water material
+      let material;
+      if (this.meshBuilder.useAdvancedWaterShader) {
+        material = this.meshBuilder.createAdvancedWaterMaterial(waterUV);
+      } else {
+        material = this.meshBuilder.createWaterMaterial(waterUV);
+      }
+      
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.receiveShadow = true;
+      
+      // Store in special meshes for animation updates
+      const chunkKey = `${chunkX},${chunkZ}`;
+      if (!this.meshBuilder.specialMeshes[chunkKey]) {
+        this.meshBuilder.specialMeshes[chunkKey] = {};
+      }
+      this.meshBuilder.specialMeshes[chunkKey][BlockType.WATER] = mesh;
+      
+      chunkGroup.add(mesh);
+      meshes.push(mesh);
+    }
+    
+    // Handle tinted meshes if they exist
+    if (geometryBuffers.tinted) {
+      for (const tintKey in geometryBuffers.tinted) {
+        const tintData = geometryBuffers.tinted[tintKey];
+        
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(tintData.positions, 3));
+        geo.setAttribute('normal', new THREE.BufferAttribute(tintData.normals, 3));
+        geo.setAttribute('uv', new THREE.BufferAttribute(tintData.uvs, 2));
+        geo.setIndex(new THREE.BufferAttribute(tintData.indices, 1));
+        geo.computeBoundingSphere();
+        
+        // Create tint material using the color
+        const material = this.meshBuilder.createTintMaterial(tintData.color);
+        
+        const mesh = new THREE.Mesh(geo, material);
+        mesh.receiveShadow = true;
+        mesh.castShadow = true;
+        
+        // Store in special meshes for animation updates
+        const chunkKey = `${chunkX},${chunkZ}`;
+        if (!this.meshBuilder.specialMeshes[chunkKey]) {
+          this.meshBuilder.specialMeshes[chunkKey] = {};
+        }
+        if (!this.meshBuilder.specialMeshes[chunkKey].tinted) {
+          this.meshBuilder.specialMeshes[chunkKey].tinted = [];
+        }
+        this.meshBuilder.specialMeshes[chunkKey].tinted.push(mesh);
+        
+        chunkGroup.add(mesh);
+        meshes.push(mesh);
+      }
+    }
+    
+    // Add the chunk group to the scene
+    this.scene.add(chunkGroup);
+    meshes.push(chunkGroup);
+    
+    // Store in MeshBuilder's chunkMeshes
+    this.meshBuilder.chunkMeshes.set(`${chunkX},${chunkZ}`, meshes);
     
     return meshes;
   }
   
   // Update visible chunks based on player position
   async updateVisibleChunks(playerX, playerZ) {
+    // Update the player position for geometry manager prioritization
+    this.geometryManager.updatePlayerPosition(playerX, playerZ);
+    this.camera = { position: { x: playerX, y: 0, z: playerZ } }; // Simple camera object if not set
+    
     // First make sure we have all the needed chunks generated
     const chunksRequested = await this.ensureChunksExist(playerX, playerZ, this.viewDistance);
     

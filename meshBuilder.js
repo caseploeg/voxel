@@ -43,7 +43,6 @@ export class MeshBuilder {
     
     // Process blocks for this chunk
     this._processChunkBlocks(worldData, geometryCollections, offsetX, offsetZ);
-    
     // Create meshes for this chunk
     const meshes = this._createMeshes(geometryCollections, scene, chunkX, chunkZ);
     
@@ -67,6 +66,7 @@ export class MeshBuilder {
     
     // Build a mesh for each chunk
     for (const [key, chunkData] of chunks) {
+      debugger; 
       const [chunkX, chunkZ] = key.split(',').map(Number);
       const chunkMeshes = this.buildChunkMesh(chunkData, scene, chunkX, chunkZ, chunkManager.chunkSize);
       meshes.push(...chunkMeshes);
@@ -91,6 +91,30 @@ export class MeshBuilder {
   // Public method to remove all chunk meshes (used when switching terrain generators)
   removeAllChunkMeshes(scene) {
     this._removeAllChunkMeshes(scene);
+  }
+  
+  // Create water material for use by worker-based geometry building
+  createWaterMaterial(waterUV) {
+    return createWaterMaterial(this.textureManager.atlasTexture, {
+      offset: { x: waterUV.offset.x, y: waterUV.offset.y },
+      repeat: { x: waterUV.repeat.x, y: waterUV.repeat.y }
+    });
+  }
+  
+  // Create advanced water material for use by worker-based geometry building
+  createAdvancedWaterMaterial(waterUV) {
+    return createAdvancedWaterMaterial(this.textureManager.atlasTexture, {
+      offset: { x: waterUV.offset.x, y: waterUV.offset.y },
+      repeat: { x: waterUV.repeat.x, y: waterUV.repeat.y }
+    });
+  }
+  
+  // Create tint material for use by worker-based geometry building
+  createTintMaterial(color) {
+    return createTintMaterial(
+      this.textureManager.atlasTexture, 
+      new THREE.Color(color.r, color.g, color.b)
+    );
   }
   
   // Remove a specific chunk mesh
