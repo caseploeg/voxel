@@ -6,7 +6,8 @@ export const BlockType = {
   STANDARD: 'standard',
   WATER: 'water',
   MULTI_SIDED: 'multi_sided',
-  CROSS: 'cross'
+  CROSS: 'cross',
+  TINTED: 'tinted'
 };
 
 // Direction enum to use for multi-sided blocks
@@ -32,7 +33,8 @@ export class BlockRegistry {
     this.specialBlocks = {
       [BlockType.WATER]: {
         transparent: true,
-        liquid: true
+        liquid: true,
+        renderOrder: 100  // Higher render order to make it render after solid blocks
       }
     };
 
@@ -41,6 +43,19 @@ export class BlockRegistry {
 
     // Valid texture list (to filter out invalid textures)
     this.validTextures = [];
+    
+    // Store which textures should be tinted and with what color
+    this.tintedTextures = {
+      // Example: grass_block_top => a shade of green
+      'grass_block_top': new THREE.Color(0.6, 0.8, 0.4),
+      'grass_block_side': new THREE.Color(0.6, 0.8, 0.4),
+      'oak_leaves': new THREE.Color(0.4, 0.7, 0.3),
+      'birch_leaves': new THREE.Color(0.5, 0.8, 0.3),
+      'acacia_leaves': new THREE.Color(0.6, 0.7, 0.3),
+      'jungle_leaves': new THREE.Color(0.3, 0.7, 0.2),
+      'spruce_leaves': new THREE.Color(0.4, 0.6, 0.2),
+      'dark_oak_leaves': new THREE.Color(0.3, 0.6, 0.2)
+    };
 
     // Default valid textures
     this.defaultValidTextures = [
@@ -56,6 +71,24 @@ export class BlockRegistry {
     // Register some default multi-sided blocks
     this.registerDefaultBlocks();
   }
+  
+  /**
+   * Check if a texture should be tinted
+   * @param {string} textureName - The texture to check
+   * @returns {boolean} True if the texture should be tinted
+   */
+  isTintedTexture(textureName) {
+    return !!this.tintedTextures[textureName];
+  }
+  
+  /**
+   * Get the tint color for a texture
+   * @param {string} textureName - The texture to get the color for
+   * @returns {THREE.Color} The tint color or white if not found
+   */
+  getTintColor(textureName) {
+    return this.tintedTextures[textureName] || new THREE.Color(1, 1, 1);
+  }
 
   /**
    * Check if a block type requires special rendering
@@ -66,6 +99,7 @@ export class BlockRegistry {
     return (
       !!this.specialBlocks[blockType] ||
       blockType === BlockType.WATER  ||
+      blockType === BlockType.TINTED ||
       blockType === BlockType.CROSS
     );
   }

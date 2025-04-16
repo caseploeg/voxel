@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { BlockType, Direction } from './blockRegistry.js';
 import { createWaterMaterial } from './shaders/waterShader.js';
+import { createTintMaterial } from './shaders/tintShader.js';
+import { createAdvancedWaterMaterial } from './shader.js';
 
 export class MeshBuilder {
   constructor(textureManager, blockRegistry) {
@@ -12,6 +14,9 @@ export class MeshBuilder {
     // Commonly used geometry
     this.cubeSize = 1;
     this.cubeGeometry = new THREE.BoxGeometry(this.cubeSize, this.cubeSize, this.cubeSize);
+    
+    // Flag to use advanced water shader
+    this.useAdvancedWaterShader = true;
   }
 
   // Build meshes from world data
@@ -35,6 +40,15 @@ export class MeshBuilder {
         waterMesh.material.uniforms.time.value += deltaTime;
       }
     }
+    
+    // Update tinted meshes if they have a time uniform
+    if (this.specialMeshes.tinted) {
+      for (const tintedMesh of this.specialMeshes.tinted) {
+        if (tintedMesh.material && tintedMesh.material.uniforms && tintedMesh.material.uniforms.time) {
+          tintedMesh.material.uniforms.time.value += deltaTime;
+        }
+      }
+    }
   }
   
   // Private methods
@@ -42,13 +56,17 @@ export class MeshBuilder {
     const collections = {
       [BlockType.STANDARD]: this._createEmptyCollection(),
       [BlockType.MULTI_SIDED]: this._createEmptyCollection(),
-      [BlockType.CROSS]: this._createEmptyCollection()
+      [BlockType.CROSS]: this._createEmptyCollection(),
+      [BlockType.TINTED]: this._createEmptyCollection()
     };
     
     // Add collections for special block types
     Object.keys(this.blockRegistry.specialBlocks).forEach(blockType => {
       collections[blockType] = this._createEmptyCollection();
     });
+    
+    // Add a special collection for tinted textures by texture name
+    collections.tintedByTexture = {};
     
     return collections;
   }
@@ -230,8 +248,40 @@ export class MeshBuilder {
             offsetY + v * repeatY
           ];
         });
-
-        this._pushFace(collection, facePositions, faceNormals, faceUVs);
+        
+        // Determine if this texture should be tinted
+        let textureName = textureType;
+        if (blockType === BlockType.MULTI_SIDED) {
+          const blockName = blockInfo.blockName;
+          let faceName;
+          switch (dirKey) {
+            case 'py': faceName = Direction.TOP; break;
+            case 'ny': faceName = Direction.BOTTOM; break;
+            default: faceName = Direction.SIDES;
+          }
+          textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
+        }
+        
+        // Check if this texture needs tinting
+        if (this.blockRegistry.isTintedTexture(textureName)) {
+          // Get the tint color for this texture
+          const tintColor = this.blockRegistry.getTintColor(textureName);
+          
+          // Ensure we have a collection for this tint color
+          const tintKey = `${tintColor.r},${tintColor.g},${tintColor.b}`;
+          if (!collections.tintedByTexture[tintKey]) {
+            collections.tintedByTexture[tintKey] = {
+              color: tintColor,
+              collection: this._createEmptyCollection()
+            };
+          }
+          
+          // Add to the tinted collection
+          this._pushFace(collections.tintedByTexture[tintKey].collection, facePositions, faceNormals, faceUVs);
+        } else {
+          // Add to the standard collection
+          this._pushFace(collection, facePositions, faceNormals, faceUVs);
+        }
       }
     }
   }
@@ -347,13 +397,23 @@ export class MeshBuilder {
       if (blockType === BlockType.WATER) {
         // Get a water texture from the atlas or use the first available texture
         const waterTextureName = Object.keys(this.textureManager.textureCache).find(name => 
-          name.includes('ice')) || Object.keys(this.textureManager.textureCache)[0];
+          name.includes('ice') || name.includes('water')) || Object.keys(this.textureManager.textureCache)[0];
           
         const waterUV = this.textureManager.getTexture(waterTextureName);
-        material = createWaterMaterial(this.textureManager.atlasTexture, {
-          offset: { x: waterUV.offset.x, y: waterUV.offset.y },
-          repeat: { x: waterUV.repeat.x, y: waterUV.repeat.y }
-        });
+        
+        if (this.useAdvancedWaterShader) {
+          // Use the new advanced water shader
+          material = createAdvancedWaterMaterial(this.textureManager.atlasTexture, {
+            offset: { x: waterUV.offset.x, y: waterUV.offset.y },
+            repeat: { x: waterUV.repeat.x, y: waterUV.repeat.y }
+          });
+        } else {
+          // Use the original water shader
+          material = createWaterMaterial(this.textureManager.atlasTexture, {
+            offset: { x: waterUV.offset.x, y: waterUV.offset.y },
+            repeat: { x: waterUV.repeat.x, y: waterUV.repeat.y }
+          });
+        }
       }
       
       const mesh = new THREE.Mesh(geo, material);
@@ -361,6 +421,41 @@ export class MeshBuilder {
       
       // Store reference to special meshes for animation updates
       this.specialMeshes[blockType] = mesh;
+      
+      scene.add(mesh);
+      meshes.push(mesh);
+    }
+    
+    // Create tinted meshes (one per color)
+    for (const tintKey in collections.tintedByTexture) {
+      const { color, collection } = collections.tintedByTexture[tintKey];
+      
+      if (collection.positions.length === 0) continue;
+      
+      console.log(`Creating tinted mesh with color ${tintKey} (${collection.positions.length/3} vertices)`);
+      
+      const geo = new THREE.BufferGeometry();
+      geo.setIndex(new THREE.BufferAttribute(new Uint32Array(collection.indices), 1));
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(collection.positions), 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(collection.normals), 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(collection.uvs), 2));
+      geo.computeBoundingSphere();
+      
+      // Create tint material with the color
+      const material = createTintMaterial(
+        this.textureManager.atlasTexture, 
+        new THREE.Color(color.r, color.g, color.b)
+      );
+      
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.receiveShadow = true;
+      mesh.castShadow = true;
+      
+      // Store the mesh for possible updates
+      if (!this.specialMeshes.tinted) {
+        this.specialMeshes.tinted = [];
+      }
+      this.specialMeshes.tinted.push(mesh);
       
       scene.add(mesh);
       meshes.push(mesh);

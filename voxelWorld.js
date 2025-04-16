@@ -21,6 +21,20 @@ export class VoxelWorld {
   // Generate terrain
   generateTerrain(worldSize = 5) {
     this.worldData.generateTerrain(worldSize);
+    
+    // Add some water blocks for demonstration
+    this.addWaterFeature(Math.floor(worldSize/2), 3, Math.floor(worldSize/2), 3, 1, 3);
+  }
+  
+  // Add a water feature (like a pond or lake)
+  addWaterFeature(x, y, z, width, height, depth) {
+    for (let dx = 0; dx < width; dx++) {
+      for (let dy = 0; dy < height; dy++) {
+        for (let dz = 0; dz < depth; dz++) {
+          this.worldData.setBlock(x + dx, y + dy, z + dz, BlockType.WATER, 'water_still');
+        }
+      }
+    }
   }
   
   // Set a block in the world

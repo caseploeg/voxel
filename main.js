@@ -33,7 +33,7 @@ const validBlockPatterns = [
   //'brick', 'cobble', 'glass', 'concrete',
   
   // Natural blocks
-  //'water', 'lava', 'snow', 'ice',
+  'water', 'lava', 'snow', 'ice',
   
   // Additional blocks - add keywords as needed
   //'wool', 'clay'
@@ -87,10 +87,13 @@ export class Game {
       this.initScene();
       this.createDebugMenu();
       
-      // Setup keyboard controls for texture debugger
+      // Setup keyboard controls for texture debugger and water shader toggle
       window.addEventListener('keydown', (e) => {
         if (e.key === 'F4') {
           this.rebuildWorldWithDebuggerSettings();
+        }
+        if (e.key === 'F5') {
+          this.toggleWaterShader();
         }
       });
       
@@ -187,12 +190,45 @@ export class Game {
     this.debugMenuElement.style.display = this.debugMenuVisible ? 'block' : 'none';
   }
 
+  // Toggle between water shader implementations
+  toggleWaterShader() {
+    if (!this.voxelWorld || !this.voxelWorld.meshBuilder) return;
+    
+    // Toggle the flag
+    this.voxelWorld.meshBuilder.useAdvancedWaterShader = !this.voxelWorld.meshBuilder.useAdvancedWaterShader;
+    
+    // Display a message
+    const message = document.createElement('div');
+    message.textContent = `Water Shader: ${this.voxelWorld.meshBuilder.useAdvancedWaterShader ? 'Advanced' : 'Basic'}`;
+    message.style.position = 'absolute';
+    message.style.top = '50%';
+    message.style.left = '50%';
+    message.style.transform = 'translate(-50%, -50%)';
+    message.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    message.style.color = 'white';
+    message.style.padding = '10px';
+    message.style.borderRadius = '5px';
+    message.style.zIndex = '1000';
+    document.body.appendChild(message);
+    
+    // Remove the message after 2 seconds
+    setTimeout(() => {
+      document.body.removeChild(message);
+    }, 2000);
+    
+    // Rebuild the mesh with the new shader
+    this.voxelWorld.buildCulledMesh();
+  }
+
   updateDebugInfo() {
     if (!this.debugMenuVisible) return;  // Only update if visible
     const calls = this.renderer.info.render.calls;
     const triangles = this.renderer.info.render.triangles;
     const points = this.renderer.info.render.points;
     const lines = this.renderer.info.render.lines;
+    
+    // Get the active water shader type
+    const waterShaderType = this.voxelWorld?.meshBuilder?.useAdvancedWaterShader ? 'Advanced' : 'Basic';
 
     // Update text (you can add more info as needed)
     this.debugMenuElement.innerHTML = `
@@ -200,7 +236,9 @@ export class Game {
       Draw Calls: ${calls}<br/>
       Triangles: ${triangles}<br/>
       Lines: ${lines}<br/>
-      Points: ${points}
+      Points: ${points}<br/>
+      Water Shader: ${waterShaderType}<br/>
+      <small>Press F5 to toggle water shader</small>
     `;
   } 
 
