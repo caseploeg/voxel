@@ -699,6 +699,8 @@ export class MeshBuilder {
     // Create cross blocks mesh
     const crossColl = collections[BlockType.CROSS];
     if (crossColl.positions.length > 0) {
+      console.log("Building cross geometry with", crossColl.positions.length/3, "vertices");
+      
       const geo = new THREE.BufferGeometry();
       geo.setIndex(new THREE.BufferAttribute(new Uint32Array(crossColl.indices), 1));
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(crossColl.positions), 3));
@@ -712,7 +714,9 @@ export class MeshBuilder {
         alphaTest: 0.5,
         side: THREE.DoubleSide,
         metalness: 0,
-        roughness: 1
+        roughness: 1,
+        transparent: true,
+        depthWrite: false
       });
 
       const mesh = new THREE.Mesh(geo, mat);
@@ -885,9 +889,19 @@ export class MeshBuilder {
   }
   
   _buildCrossBlock(collection, x, y, z, textureName) {
+    console.log("Building cross block at", x, y, z, "with texture", textureName);
+    
+    // Use "poppy" as default if textureName is invalid
+    if (!textureName || textureName === "undefined") {
+      textureName = "poppy";
+    }
+    
     // Get the atlas UV for this texture
     const atlasUV = this.textureManager.getTexture(textureName);
-    if (!atlasUV) return;
+    if (!atlasUV) {
+      console.warn("Texture not found for cross block:", textureName);
+      return;
+    }
 
     // Define two quads, each quad has 4 positions, 4 normals, 4 UVs, and 6 indices
     const halfSize = 0.4;

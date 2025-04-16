@@ -65,7 +65,8 @@ export class BlockRegistry {
       'birch_leaves', 'spruce_leaves', 'jungle_leaves', 'dark_oak_leaves',
       'bookshelf', 'snow', 'clay', 'acacia_planks', 'birch_planks',
       'diorite', 'granite', 'andesite', 'sandstone', 'obsidian',
-      'diamond_block', 'gold_block', 'iron_block', 'emerald_block'
+      'diamond_block', 'gold_block', 'iron_block', 'emerald_block',
+      'poppy', 'dandelion', 'rose', 'blue_orchid', 'tulip_red'
     ];
 
     // Register some default multi-sided blocks

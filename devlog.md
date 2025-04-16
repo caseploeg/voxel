@@ -73,3 +73,5 @@
 - debugging fast chunk rendering
 - i think the queuing system can be smarter, to prioritize direction of travel (nearest to player), and culling the queue depending on direction. going to try offloading mesh building to a worker  
 
+3:20pm wednesday
+- flower demo

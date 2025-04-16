@@ -23,8 +23,8 @@ self.onmessage = function(e) {
         // Measure start time
         const startTime = performance.now();
         
-        const { chunkX, chunkZ, chunkSize } = data;
-        const chunkData = generateChunk(chunkX, chunkZ, chunkSize);
+        const { chunkX, chunkZ, chunkSize, debug_more_poppies } = data;
+        const chunkData = generateChunk(chunkX, chunkZ, chunkSize, { debug_more_poppies });
         
         // Measure end time
         const endTime = performance.now();
@@ -114,10 +114,13 @@ function generateChunk(chunkX, chunkZ, chunkSize) {
 }
 */
 
-function generateChunk(chunkX, chunkZ, chunkSize) {
+function generateChunk(chunkX, chunkZ, chunkSize, options = {}) {
   if (!terrainGen || !noiseLib) {
     throw new Error('Terrain generator not initialized');
   }
+  
+  // Extract options with defaults
+  const { debug_more_poppies = false } = options;
 
   const { seaLevel, maxHeight, heightAmp, heightFreq } = terrainGen.params;
   const worldX = chunkX * chunkSize;
@@ -163,15 +166,24 @@ function generateChunk(chunkX, chunkZ, chunkSize) {
       }
 
       // --- FLOWERS: place poppies sparsely on grass ---
-      const flowerChance = 0.04;
-      const flowerNoise = noiseLib.perlin2(globalX * 0.5, globalZ * 0.5);
+      // If debug_more_poppies is set, create a lot more flowers
+      const flowerChance = debug_more_poppies ? 0.8 : 0.25;
+      
+      // Checker pattern for debugging
+      const isFlowerSpot = (worldX + worldZ) % 2 === 0;
+      
       if (
-        flowerNoise > 0.3 &&
+        (debug_more_poppies && isFlowerSpot) ||
+        (noiseLib.perlin2(globalX * 0.5, globalZ * 0.5) > 0.1 &&
         Math.random() < flowerChance &&
         height >= seaLevel - 1 &&
-        chunkData[x][z][height] === 1
+        chunkData[x][z][height] === 1)
       ) {
-        chunkData[x][z][height + 1] = 5; // poppy above grass
+        chunkData[x][z][height + 1] = 5; // poppy above grass (5 is the block ID for poppies)
+        // Print debug info for the first several poppies
+        if (chunkX === 0 && chunkZ === 0 && x < 8 && z < 8) {
+          console.log("Generated poppy at chunk position", x, height+1, z);
+        }
       }
     }
   }

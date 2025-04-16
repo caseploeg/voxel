@@ -17,11 +17,11 @@ export const TERRAIN_TYPE = {
 const DEFAULT_BLOCK_MAPPINGS = {
   [TERRAIN_TYPE.PERLIN]: {
     [PERLIN_BLOCK.AIR]: null,
-    [PERLIN_BLOCK.GRASS]: "poppy", // Use multi-sided grass_block
+    [PERLIN_BLOCK.GRASS]: "grass_block", // Grass blocks with different textures on each face
     [PERLIN_BLOCK.DIRT]: "dirt", 
     [PERLIN_BLOCK.STONE]: "stone",
     [PERLIN_BLOCK.WATER]: "water",
-    [PERLIN_BLOCK.WOOD]: "poppy",       // Use multi-sided oak_log
+    [5]: "poppy"                        // Cross-type poppy flower blocks
   },
   /*
   [TERRAIN_TYPE.DENSITY]: {

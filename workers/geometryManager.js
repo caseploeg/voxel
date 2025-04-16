@@ -274,6 +274,7 @@ export class GeometryManager {
         STANDARD: 'standard',
         WATER: 'water',
         MULTI_SIDED: 'multi_sided',
+        CROSS: 'cross',
         TINTED: 'tinted'
       }
     };

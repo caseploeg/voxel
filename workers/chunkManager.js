@@ -102,7 +102,9 @@ export class ChunkGenerationManager {
           chunkX,
           chunkZ,
           chunkSize,
-          requestId
+          requestId,
+          // Special instruction to generate more poppies for debugging
+          debug_more_poppies: true
         }
       });
     });

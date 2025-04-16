@@ -14,6 +14,7 @@ const BLOCK = {
   DIRT: 2,
   STONE: 3,
   WATER: 4,
+  POPPY: 5,  // Flowers and other cross-type blocks
   // You can extend with additional block types as needed
 };
 
@@ -89,21 +90,19 @@ class AdvancedTerrain {
         const worldX = chunkX * chunkSize + x;
         const worldZ = chunkZ * chunkSize + z;
         
-        // Checker pattern (alternating grass and stone)
+        // SUPER SIMPLE for debugging: every other block is grass, alternate with stone
         const isGrass = (worldX + worldZ) % 2 === 0;
         
-        // Fill each column with a single block type
-        for (let y = 0; y < terrainHeight; y++) {
-          if (y < 5) {
-            // Bottom layer is always stone
-            chunk[x][z][y] = BLOCK.STONE;
-          } else if (y < terrainHeight - 1) {
-            // Middle layers alternate between stone and dirt
-            chunk[x][z][y] = BLOCK.DIRT;
-          } else {
-            // Top layer is grass or stone in a checker pattern
-            chunk[x][z][y] = isGrass ? BLOCK.GRASS : BLOCK.STONE;
-          }
+        // Populate the ground level - just one layer for simplicity
+        const y = 5; // Fixed single layer height
+        
+        // Set the block type based on the checker pattern
+        chunk[x][z][y] = isGrass ? BLOCK.GRASS : BLOCK.STONE;
+        
+        // Add poppies on top of every grass block
+        if (isGrass) {
+          chunk[x][z][y + 1] = BLOCK.POPPY;
+          console.log(`Placed poppy at ${worldX},${y+1},${worldZ}`); 
         }
       }
     }

@@ -17,7 +17,7 @@ export class VoxelWorld {
     // Create components
     this.blockRegistry = new BlockRegistry(textureManager);
     this.worldData = new WorldData(this.blockRegistry); // Legacy support
-    this.chunkManager = new ChunkManager(this.blockRegistry, 32); // Chunk-based storage
+    this.chunkManager = new ChunkManager(this.blockRegistry, 8); // Chunk-based storage
     this.meshBuilder = new MeshBuilder(textureManager, this.blockRegistry);
     
     // Store meshes
@@ -25,7 +25,7 @@ export class VoxelWorld {
     this.clock = new THREE.Clock();
     
     // View distance for chunk rendering (in chunks) - smaller for more visible loading/unloading
-    this.viewDistance = 1;
+    this.viewDistance = 32;
     
     // Store the current terrain type
     this.terrainType = terrainType;
@@ -254,6 +254,9 @@ export class VoxelWorld {
                 blockTypeEnum = BlockType.WATER;
               } else if (blockName === 'grass_block') {
                 blockTypeEnum = BlockType.MULTI_SIDED;
+              } else if (blockName === 'poppy' || blockType === 5) {
+                blockTypeEnum = BlockType.CROSS;
+                console.log("Creating CROSS block (poppy) at", globalX, globalY, globalZ);
               } else {
                 blockTypeEnum = BlockType.STANDARD;
               }
