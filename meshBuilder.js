@@ -66,7 +66,6 @@ export class MeshBuilder {
     
     // Build a mesh for each chunk
     for (const [key, chunkData] of chunks) {
-      debugger; 
       const [chunkX, chunkZ] = key.split(',').map(Number);
       const chunkMeshes = this.buildChunkMesh(chunkData, scene, chunkX, chunkZ, chunkManager.chunkSize);
       meshes.push(...chunkMeshes);

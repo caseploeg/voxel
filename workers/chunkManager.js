@@ -116,7 +116,7 @@ export class ChunkGenerationManager {
     
     // Create the new workers
     for (let i = 0; i < this.workerCount; i++) {
-      const worker = new Worker(new URL('./chunkWorker.js', import.meta.url));
+      const worker = new Worker(new URL('./chunkWorker.js', import.meta.url), {type: 'module'});
       
       // Handle messages from the worker
       worker.onmessage = (e) => {
