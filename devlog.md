@@ -69,3 +69,7 @@
 10:13am wednesday
 - dynamic chunk rendering
 
+10:47am wednesday
+- debugging fast chunk rendering
+- i think the queuing system can be smarter, to prioritize direction of travel (nearest to player), and culling the queue depending on direction. going to try offloading mesh building to a worker  
+

@@ -88,6 +88,11 @@ export class MeshBuilder {
     this.specialMeshes = {};
   }
   
+  // Public method to remove all chunk meshes (used when switching terrain generators)
+  removeAllChunkMeshes(scene) {
+    this._removeAllChunkMeshes(scene);
+  }
+  
   // Remove a specific chunk mesh
   removeChunkMesh(scene, chunkX, chunkZ) {
     const key = `${chunkX},${chunkZ}`;

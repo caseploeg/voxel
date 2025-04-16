@@ -8,6 +8,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { TextureManager } from './textureManager.js';
 import { InputHandler } from './inputHandler.js'; 
 import { VoxelWorld } from './voxelWorld.js';
+import { TERRAIN_TYPE } from './terrainGenerator.js';
 import { RenderManager } from './renderManager.js';
 import { TextureDebugger } from './textureDebugger.js';
 
@@ -94,13 +95,26 @@ export class Game {
       this.initScene();
       this.createDebugMenu();
       
-      // Setup keyboard controls for texture debugger and water shader toggle
+      // Show debug menu by default so player can see worker thread status
+      this.toggleDebugMenu();
+      
+      // Setup keyboard controls for texture debugger, water shader toggle, and terrain type
       window.addEventListener('keydown', (e) => {
         if (e.key === 'F4') {
           this.rebuildWorldWithDebuggerSettings();
         }
         if (e.key === 'F5') {
           this.toggleWaterShader();
+        }
+        if (e.key === 'F1') {
+          this.toggleTerrainType();
+        }
+      });
+      
+      // Add window unload handler to clean up workers
+      window.addEventListener('beforeunload', () => {
+        if (this.voxelWorld) {
+          this.voxelWorld.cleanup();
         }
       });
       
@@ -246,8 +260,44 @@ export class Game {
     }, 2000);
     
     // Rebuild the mesh with the new shader
-    debugger;
     this.voxelWorld.buildCulledMesh();
+  }
+  
+  // Toggle between terrain generation algorithms
+  toggleTerrainType() {
+    if (!this.voxelWorld) return;
+    
+    // Switch between the terrain types
+    const newTerrainType = this.voxelWorld.terrainType === TERRAIN_TYPE.PERLIN 
+      ? TERRAIN_TYPE.DENSITY 
+      : TERRAIN_TYPE.PERLIN;
+    
+    // Update the terrain generator
+    this.voxelWorld.setTerrainType(newTerrainType);
+    
+    // Regenerate terrain around the player
+    if (this.camera) {
+      this.voxelWorld.updateVisibleChunks(this.camera.position.x, this.camera.position.z);
+    }
+    
+    // Display a message
+    const message = document.createElement('div');
+    message.textContent = `Terrain Generator: ${newTerrainType === TERRAIN_TYPE.PERLIN ? 'Perlin Heightmap' : 'Density Function'}`;
+    message.style.position = 'absolute';
+    message.style.top = '50%';
+    message.style.left = '50%';
+    message.style.transform = 'translate(-50%, -50%)';
+    message.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    message.style.color = 'white';
+    message.style.padding = '10px';
+    message.style.borderRadius = '5px';
+    message.style.zIndex = '1000';
+    document.body.appendChild(message);
+    
+    // Remove the message after 2 seconds
+    setTimeout(() => {
+      document.body.removeChild(message);
+    }, 2000);
   }
 
   updateDebugInfo() {
@@ -266,6 +316,11 @@ export class Game {
     // Get the active water shader type
     const waterShaderType = this.voxelWorld?.meshBuilder?.useAdvancedWaterShader ? 'Advanced' : 'Basic';
     
+    // Get terrain generator type
+    const terrainType = this.voxelWorld?.terrainType === TERRAIN_TYPE.PERLIN
+      ? 'Perlin Heightmap'
+      : 'Density Function';
+    
     // Get rendering mode
     const renderingMode = this.useChunkRendering ? 'Chunk-Based' : 'Single Mesh';
     
@@ -279,10 +334,33 @@ export class Game {
     // Get dynamic loading info
     const dynamicLoading = this.useChunkRendering ? 'ON' : 'OFF';
     
+    // Get worker thread stats
+    const chunksQueued = this.voxelWorld?.chunkQueue?.length || 0;
+    const chunksGenerating = this.voxelWorld?.chunksBeingGenerated?.size || 0;
+    const workerCount = this.voxelWorld?.chunkGenManager?.workerCount || 0;
+    
     // Get camera position
     const camX = Math.round(this.camera?.position.x || 0);
     const camY = Math.round(this.camera?.position.y || 0);
     const camZ = Math.round(this.camera?.position.z || 0);
+
+    // Get performance metrics
+    let chunkGenAvg = 0, chunkGenMax = 0, chunkGenMin = 0, chunkGenCount = 0;
+    if (this.voxelWorld?.generationStats && this.voxelWorld.generationStats.totalChunks > 0) {
+      chunkGenCount = this.voxelWorld.generationStats.totalChunks;
+      chunkGenAvg = (this.voxelWorld.generationStats.totalTime / chunkGenCount).toFixed(2);
+      chunkGenMax = this.voxelWorld.generationStats.maxTime.toFixed(2);
+      chunkGenMin = this.voxelWorld.generationStats.minTime.toFixed(2);
+    }
+
+    let buildAvg = 0, buildMax = 0, buildMin = 0, buildCount = 0, buildLast = 0;
+    if (this.voxelWorld?.buildStats && this.voxelWorld.buildStats.totalMeshes > 0) {
+      buildCount = this.voxelWorld.buildStats.totalMeshes;
+      buildAvg = (this.voxelWorld.buildStats.totalTime / buildCount).toFixed(2);
+      buildMax = this.voxelWorld.buildStats.maxTime.toFixed(2);
+      buildMin = this.voxelWorld.buildStats.minTime.toFixed(2);
+      buildLast = this.voxelWorld.buildStats.lastTime.toFixed(2);
+    }
 
     // Update text (you can add more info as needed)
     this.debugMenuElement.innerHTML = `
@@ -291,13 +369,20 @@ export class Game {
       Triangles: ${triangles}<br/>
       Position: ${camX}, ${camY}, ${camZ}<br/>
       Water Shader: ${waterShaderType}<br/>
+      Terrain Type: ${terrainType}<br/>
       Rendering: ${renderingMode}<br/>
       Chunks: ${renderedChunks} rendered / ${totalChunks} total<br/>
       View Distance: ${viewDistance} chunks<br/>
       Dynamic Loading: ${dynamicLoading}<br/>
+      Workers: ${workerCount} threads<br/>
+      Chunks Processing: ${chunksGenerating} generating / ${chunksQueued} queued<br/>
+      <strong>Performance (ms):</strong><br/>
+      Generation: avg=${chunkGenAvg} min=${chunkGenMin} max=${chunkGenMax} (${chunkGenCount})<br/>
+      Mesh Build: avg=${buildAvg} min=${buildMin} max=${buildMax} last=${buildLast} (${buildCount})<br/>
       <small>Press F3 to hide/show debug</small>
       <small>Press F5 to toggle water shader</small>
       <small>Press F6 to toggle chunk rendering</small>
+      <small>Press F7 to toggle terrain generator</small>
     `;
   }
   
@@ -381,10 +466,20 @@ export class Game {
         
         // Update visible chunks more frequently (every 4 units) to make loading/unloading more visible
         if (dx > 4 || dz > 4) {
-          // The updateVisibleChunks method now returns the number of chunks generated
-          const newChunksGenerated = this.voxelWorld.updateVisibleChunks(camPos.x, camPos.z);
+          // Use the async updateVisibleChunks method - we don't await it to avoid hitching
+          // The chunk generation happens in the background and meshes are built when ready
+          this.voxelWorld.updateVisibleChunks(camPos.x, camPos.z)
+            .then(newChunksRequested => {
+              // We can show notifications or update UI here if needed
+              if (newChunksRequested > 0) {
+                console.log(`Requested ${newChunksRequested} new chunks`);
+              }
+            })
+            .catch(error => {
+              console.error('Error updating chunks:', error);
+            });
           
-          // Update last position
+          // Update last position immediately 
           this.lastChunkUpdatePosition = {
             x: camPos.x,
             z: camPos.z
@@ -392,40 +487,12 @@ export class Game {
           
           // Show visual indication of chunk update in debug mode
           if (this.debugMenuVisible) {
-            console.log(`Updated chunks at position: ${Math.round(camPos.x)}, ${Math.round(camPos.z)}, generated ${newChunksGenerated} new chunks`);
+            console.log(`Updating chunks at position: ${Math.round(camPos.x)}, ${Math.round(camPos.z)}`);
             
-            // Display a temporary message about new chunks if any were generated
-            if (newChunksGenerated > 0) {
-              const chunkMessage = document.createElement('div');
-              chunkMessage.textContent = `Generated ${newChunksGenerated} new chunks`;
-              chunkMessage.style.position = 'absolute';
-              chunkMessage.style.bottom = '20px';
-              chunkMessage.style.left = '50%';
-              chunkMessage.style.transform = 'translateX(-50%)';
-              chunkMessage.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-              chunkMessage.style.color = 'white';
-              chunkMessage.style.padding = '5px 10px';
-              chunkMessage.style.borderRadius = '5px';
-              chunkMessage.style.zIndex = '1000';
-              document.body.appendChild(chunkMessage);
-              
-              setTimeout(() => {
-                document.body.removeChild(chunkMessage);
-              }, 1500);
-            }
-            
-            // Briefly flash the debug menu to indicate chunk update - green for new chunks, blue for visibility
+            // Just briefly flash the debug menu blue to indicate visibility update
             if (this.debugMenuElement) {
               const originalBackground = this.debugMenuElement.style.backgroundColor;
-              
-              if (newChunksGenerated > 0) {
-                // Flash green when new chunks are generated
-                this.debugMenuElement.style.backgroundColor = 'rgba(50, 150, 50, 0.7)';
-              } else {
-                // Flash blue when just updating visibility
-                this.debugMenuElement.style.backgroundColor = 'rgba(50, 100, 150, 0.7)';
-              }
-              
+              this.debugMenuElement.style.backgroundColor = 'rgba(50, 100, 150, 0.7)';
               setTimeout(() => {
                 this.debugMenuElement.style.backgroundColor = originalBackground;
               }, 200);
