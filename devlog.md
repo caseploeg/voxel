@@ -62,3 +62,6 @@
 
 7:43pm tuesday
 - fix the atlas debug overlay so its more readable
+
+11:31pm tuesday
+- real perlin noise generation !! lets goo
