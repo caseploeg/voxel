@@ -75,3 +75,6 @@
 
 3:20pm wednesday
 - flower demo
+
+3:46 wednesday
+- better gen. actually kinda minecraft like. pretty cool. render is slow-ish. bottleneck is mesh build i guess - need profiler

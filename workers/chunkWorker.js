@@ -113,7 +113,7 @@ function generateChunk(chunkX, chunkZ, chunkSize) {
   return chunkData;
 }
 */
-
+/*
 function generateChunk(chunkX, chunkZ, chunkSize, options = {}) {
   if (!terrainGen || !noiseLib) {
     throw new Error('Terrain generator not initialized');
@@ -190,6 +190,124 @@ function generateChunk(chunkX, chunkZ, chunkSize, options = {}) {
 
   return chunkData;
 }
+*/
+
+function generateChunk(chunkX, chunkZ, chunkSize, options = {}) {
+  if (!terrainGen || !noiseLib) {
+    throw new Error('Terrain generator not initialized');
+  }
+  
+  // Extract options with defaults
+  const { debug_more_poppies = false } = options;
+
+  const { seaLevel, maxHeight, heightAmp } = terrainGen.params;
+  const worldX = chunkX * chunkSize;
+  const worldZ = chunkZ * chunkSize;
+  const chunkData = new Array(chunkSize);
+
+  // Precompute height and moisture maps for better organization
+  const heightMap = new Array(chunkSize);
+  const moistureMap = new Array(chunkSize);
+
+  for (let x = 0; x < chunkSize; x++) {
+    heightMap[x] = new Array(chunkSize);
+    moistureMap[x] = new Array(chunkSize);
+    
+    for (let z = 0; z < chunkSize; z++) {
+      const globalX = worldX + x;
+      const globalZ = worldZ + z;
+      
+      // --- IMPROVED HEIGHT MAP: multiple octaves with domain warping ---
+      const baseFreq = 0.05;
+      
+      // Apply domain warping for more natural, less grid-like terrain
+      const warpX = 0.1 * noiseLib.perlin2(globalX * 0.05, globalZ * 0.05);
+      const warpZ = 0.1 * noiseLib.perlin2(globalX * 0.05 + 500, globalZ * 0.05 + 500);
+      
+      // Multiple octaves with correct offsets to avoid correlation
+      const e = (
+        1.0 * noiseLib.perlin2(baseFreq * (globalX + warpX), baseFreq * (globalZ + warpZ)) +
+        0.5 * noiseLib.perlin2(2 * baseFreq * (globalX + warpX) + 5.3, 2 * baseFreq * (globalZ + warpZ) + 9.1) +
+        0.25 * noiseLib.perlin2(4 * baseFreq * (globalX + warpX) + 13.7, 4 * baseFreq * (globalZ + warpZ) + 17.3)
+      ) / (1.0 + 0.5 + 0.25);
+      
+      // Emphasize terrain features with adjusted power curve
+      const elevation = Math.pow(e, 2.3);
+      let height = Math.floor(seaLevel + heightAmp * elevation);
+      height = Math.max(1, Math.min(maxHeight - 1, height));
+      
+      heightMap[x][z] = height;
+      
+      // --- MOISTURE MAP: for biome variation ---
+      // Use different frequencies and offsets for uncorrelated moisture
+      moistureMap[x][z] = (
+        noiseLib.perlin2(baseFreq * globalX + 300, baseFreq * globalZ + 900) + 1
+      ) * 0.5; // Convert from [-1,1] to [0,1]
+    }
+  }
+
+  // Generate the 3D chunk data using the precomputed maps
+  for (let x = 0; x < chunkSize; x++) {
+    chunkData[x] = new Array(chunkSize);
+    
+    for (let z = 0; z < chunkSize; z++) {
+      chunkData[x][z] = new Array(maxHeight).fill(0); // Fill with air
+      
+      const globalX = worldX + x;
+      const globalZ = worldZ + z;
+      const height = heightMap[x][z];
+      const moisture = moistureMap[x][z];
+      
+      // --- TERRAIN LAYERS: with moisture-based variation ---
+      // Vary dirt depth based on moisture (wetter = deeper soil)
+      const dirtDepth = 2 + Math.floor(moisture * 2);
+      
+      for (let y = 0; y <= height; y++) {
+        if (y === height) {
+          chunkData[x][z][y] = 1; // Top layer: grass_block
+        } else if (y >= height - dirtDepth) {
+          chunkData[x][z][y] = 2; // Mid layer: dirt with variable depth
+        } else {
+          chunkData[x][z][y] = 3; // Base layer: stone
+        }
+      }
+      
+      // --- WATER: fill up valleys below sea level ---
+      if (height < seaLevel) {
+        for (let y = height + 1; y <= seaLevel; y++) {
+          chunkData[x][z][y] = 4; // water
+        }
+      }
+      
+      // --- IMPROVED VEGETATION PLACEMENT: using noise patterns ---
+      // Only place vegetation on grass blocks above water level
+      if (height >= seaLevel - 1 && chunkData[x][z][height] === 1) {
+        // Base flower chance on moisture (more flowers in medium moisture areas)
+        let flowerChance = debug_more_poppies ? 0.8 : 0.15;
+        
+        // Adjust chance based on moisture - peak at moderate moisture levels
+        const moistureModifier = 1.0 - Math.abs((moisture - 0.6) * 2.5);
+        flowerChance *= Math.max(0.1, moistureModifier);
+        
+        // Use noise for natural flower patches 
+        // Higher frequency noise creates smaller, more detailed patches
+        const flowerNoise = noiseLib.perlin2(globalX * 0.2, globalZ * 0.2);
+        
+        if (flowerNoise > 0.3 && Math.random() < flowerChance) {
+          chunkData[x][z][height + 1] = 5; // poppy above grass
+          
+          // Print debug info for the first several poppies
+          if (chunkX === 0 && chunkZ === 0 && x < 8 && z < 8) {
+            console.log("Generated poppy at chunk position", x, height+1, z);
+          }
+        }
+      }
+    }
+  }
+
+  return chunkData;
+}
+
 
 
 

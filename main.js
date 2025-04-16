@@ -197,7 +197,7 @@ export class Game {
     sunLight.castShadow = true;
     scene.add(sunLight);
 
-    this.inputHandler = new InputHandler(camera, document.body, { movementSpeed: 100.0 }); // Faster movement to more quickly see chunks loading
+    this.inputHandler = new InputHandler(camera, document.body, { movementSpeed: 25.0 }); // Faster movement to more quickly see chunks loading
     
     // Store references on the Game instance
     this.scene = scene;

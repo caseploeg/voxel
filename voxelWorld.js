@@ -17,7 +17,7 @@ export class VoxelWorld {
     // Create components
     this.blockRegistry = new BlockRegistry(textureManager);
     this.worldData = new WorldData(this.blockRegistry); // Legacy support
-    this.chunkManager = new ChunkManager(this.blockRegistry, 8); // Chunk-based storage
+    this.chunkManager = new ChunkManager(this.blockRegistry, 12); // Chunk-based storage
     this.meshBuilder = new MeshBuilder(textureManager, this.blockRegistry);
     
     // Store meshes
@@ -25,7 +25,7 @@ export class VoxelWorld {
     this.clock = new THREE.Clock();
     
     // View distance for chunk rendering (in chunks) - smaller for more visible loading/unloading
-    this.viewDistance = 32;
+    this.viewDistance = 5;
     
     // Store the current terrain type
     this.terrainType = terrainType;
