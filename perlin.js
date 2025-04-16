@@ -287,18 +287,24 @@ class AdvancedTerrain {
 }
 
 /**
- * Generates a full terrain map by creating a grid of chunks.
+ * Generates a terrain map by creating chunks.
  * @param {AdvancedTerrain} terrainGen - Instance of AdvancedTerrain.
  * @param {number} numChunksX - Number of chunks along the X-axis.
  * @param {number} numChunksZ - Number of chunks along the Z-axis.
  * @param {number} chunkSize - The size (width and depth) of each chunk.
+ * @param {number} [startChunkX=0] - Starting X chunk coordinate (for offset generation).
+ * @param {number} [startChunkZ=0] - Starting Z chunk coordinate (for offset generation).
  * @returns {Object} - An object mapping chunk coordinate strings ("x,z") to voxel chunk arrays.
  */
-function generateTerrain(terrainGen, numChunksX, numChunksZ, chunkSize) {
+function generateTerrain(terrainGen, numChunksX, numChunksZ, chunkSize, startChunkX = 0, startChunkZ = 0) {
   const terrainMap = {};
-  for (let chunkX = 0; chunkX < numChunksX; chunkX++) {
-    for (let chunkZ = 0; chunkZ < numChunksZ; chunkZ++) {
-      // Generate each chunk using the AdvancedTerrain instance.
+  for (let xOffset = 0; xOffset < numChunksX; xOffset++) {
+    for (let zOffset = 0; zOffset < numChunksZ; zOffset++) {
+      // Calculate actual chunk coordinates
+      const chunkX = startChunkX + xOffset;
+      const chunkZ = startChunkZ + zOffset;
+      
+      // Generate each chunk using the AdvancedTerrain instance
       const chunkData = terrainGen.generateChunk(chunkX, chunkZ, chunkSize);
       terrainMap[`${chunkX},${chunkZ}`] = chunkData;
     }

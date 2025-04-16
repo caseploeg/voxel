@@ -10,6 +10,7 @@ export class MeshBuilder {
     this.textureManager = textureManager;
     this.blockRegistry = blockRegistry;
     this.specialMeshes = {}; // Store meshes by block type
+    this.chunkMeshes = new Map(); // key: "chunkX,chunkZ" -> array of meshes
     
     // Commonly used geometry
     this.cubeSize = 1;
@@ -19,7 +20,7 @@ export class MeshBuilder {
     this.useAdvancedWaterShader = true;
   }
 
-  // Build meshes from world data
+  // Build meshes from world data (legacy method)
   buildMeshes(worldData, scene) {
     // Create separate collections for different block types
     const geometryCollections = this._createGeometryCollections();
@@ -31,9 +32,269 @@ export class MeshBuilder {
     return this._createMeshes(geometryCollections, scene);
   }
   
+  // Build a mesh for an individual chunk
+  buildChunkMesh(worldData, scene, chunkX, chunkZ, chunkSize = 16) {
+    // Create separate collections for different block types
+    const geometryCollections = this._createGeometryCollections();
+    
+    // Calculate the world offset for this chunk
+    const offsetX = chunkX * chunkSize;
+    const offsetZ = chunkZ * chunkSize;
+    
+    // Process blocks for this chunk
+    this._processChunkBlocks(worldData, geometryCollections, offsetX, offsetZ);
+    
+    // Create meshes for this chunk
+    const meshes = this._createMeshes(geometryCollections, scene, chunkX, chunkZ);
+    
+    // Store chunk meshes in our map
+    this.chunkMeshes.set(`${chunkX},${chunkZ}`, meshes);
+    
+    return meshes;
+  }
+
+  // Build all chunk meshes
+  buildAllChunkMeshes(chunkManager, scene, playerX, playerZ, viewDistance) {
+    // Clean up old meshes first
+    this._removeAllChunkMeshes(scene);
+    
+    // Get visible chunks
+    const chunks = viewDistance !== undefined
+      ? chunkManager.getChunks(playerX, playerZ, viewDistance)
+      : chunkManager.getChunks();
+    
+    const meshes = [];
+    
+    // Build a mesh for each chunk
+    for (const [key, chunkData] of chunks) {
+      const [chunkX, chunkZ] = key.split(',').map(Number);
+      const chunkMeshes = this.buildChunkMesh(chunkData, scene, chunkX, chunkZ, chunkManager.chunkSize);
+      meshes.push(...chunkMeshes);
+    }
+    
+    return meshes;
+  }
+  
+  // Remove all chunk meshes from the scene
+  _removeAllChunkMeshes(scene) {
+    for (const [key, meshes] of this.chunkMeshes.entries()) {
+      meshes.forEach(mesh => {
+        if (scene) {
+          scene.remove(mesh);
+        }
+      });
+    }
+    this.chunkMeshes.clear();
+    this.specialMeshes = {};
+  }
+  
+  // Remove a specific chunk mesh
+  removeChunkMesh(scene, chunkX, chunkZ) {
+    const key = `${chunkX},${chunkZ}`;
+    if (this.chunkMeshes.has(key)) {
+      const meshes = this.chunkMeshes.get(key);
+      meshes.forEach(mesh => {
+        if (scene) {
+          scene.remove(mesh);
+        }
+      });
+      this.chunkMeshes.delete(key);
+    }
+  }
+  
+  // Update which chunks are visible based on player position
+  updateVisibleChunks(chunkManager, scene, playerX, playerZ, viewDistance) {
+    if (!viewDistance) return;
+    
+    const centerChunkX = Math.floor(playerX / chunkManager.chunkSize);
+    const centerChunkZ = Math.floor(playerZ / chunkManager.chunkSize);
+    
+    // Check all loaded chunks to see if they're still visible
+    for (const [key, meshes] of this.chunkMeshes.entries()) {
+      const [chunkX, chunkZ] = key.split(',').map(Number);
+      const dx = Math.abs(chunkX - centerChunkX);
+      const dz = Math.abs(chunkZ - centerChunkZ);
+      
+      if (dx > viewDistance || dz > viewDistance) {
+        // This chunk is now out of range, remove its meshes
+        meshes.forEach(mesh => scene.remove(mesh));
+        this.chunkMeshes.delete(key);
+      }
+    }
+    
+    // Check for chunks that need to be loaded
+    for (let x = centerChunkX - viewDistance; x <= centerChunkX + viewDistance; x++) {
+      for (let z = centerChunkZ - viewDistance; z <= centerChunkZ + viewDistance; z++) {
+        const key = `${x},${z}`;
+        
+        // If the chunk isn't loaded and exists in the world, load it
+        if (!this.chunkMeshes.has(key) && chunkManager.chunks.has(key)) {
+          const chunkData = chunkManager.chunks.get(key);
+          this.buildChunkMesh(chunkData, scene, x, z, chunkManager.chunkSize);
+        }
+      }
+    }
+  }
+  
+  // Process blocks for a specific chunk
+  _processChunkBlocks(worldData, collections, offsetX, offsetZ) {
+    // Offsets for the 6 directions
+    const directions = this._getDirections();
+    
+    // Process all blocks in this chunk
+    for (let key in worldData.worldData) {
+      if (!worldData.worldData.hasOwnProperty(key)) continue;
+      const [localX, y, localZ] = key.split(',').map(Number);
+      const blockInfo = worldData.worldData[key];
+      if (!blockInfo) continue;
+
+      // Calculate world coordinates
+      const x = localX + offsetX;
+      const z = localZ + offsetZ;
+
+      const { blockType, textureType } = blockInfo;
+      const collection = collections[blockType];
+      
+      // Skip if we don't have a collection for this block type
+      if (!collection) continue;
+
+      // Handle cross blocks specially
+      if (blockType === BlockType.CROSS) {
+        this._buildCrossBlock(collection, x, y, z, textureType);
+        continue;
+      }
+
+      // For each of the 6 directions, add the face if that neighbor doesn't exist
+      for (let dirKey in directions) {
+        const dir = directions[dirKey];
+        
+        // Calculate local coordinates of neighbor
+        const neighborLocalX = localX + dir.neighbor[0];
+        const neighborLocalY = y + dir.neighbor[1];
+        const neighborLocalZ = localZ + dir.neighbor[2];
+        
+        // Check if neighbor is outside chunk bounds
+        const isNeighborOutsideChunk = 
+          neighborLocalX < 0 || 
+          neighborLocalX >= 16 || 
+          neighborLocalZ < 0 || 
+          neighborLocalZ >= 16;
+        
+        let neighborInfo = null;
+        if (!isNeighborOutsideChunk) {
+          // Neighbor is within this chunk, check directly
+          const neighborKey = `${neighborLocalX},${neighborLocalY},${neighborLocalZ}`;
+          neighborInfo = worldData.worldData[neighborKey];
+        }
+        
+        const skipFace = neighborInfo && 
+          !(this.blockRegistry.isSpecialBlock(blockType) || blockType === BlockType.MULTI_SIDED) && 
+          neighborInfo.blockType !== blockType;
+            
+        if (skipFace) {
+          continue;
+        }
+
+        // Get texture information based on block type
+        let atlasUV;
+        if (blockType === BlockType.STANDARD) {
+          // For standard blocks, use the assigned texture
+          atlasUV = this.textureManager.getTexture(textureType);
+        } 
+        else if (blockType === BlockType.MULTI_SIDED) {
+          // For multi-sided blocks, select texture based on the face direction
+          const blockName = blockInfo.blockName;
+          let faceName;
+          // Map direction key to face name
+          switch (dirKey) {
+            case 'py': faceName = Direction.TOP; break;
+            case 'ny': faceName = Direction.BOTTOM; break;
+            default: faceName = Direction.SIDES;
+          }
+          
+          // Get the texture for this face
+          const textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
+          atlasUV = this.textureManager.getTexture(textureName);
+          
+          if (!atlasUV) {
+            continue;
+          }
+        } 
+        else if (blockType === BlockType.WATER) {
+          // For water, we'll use a specific texture or a default one
+          // Later the shader will handle the special effects
+          atlasUV = this.textureManager.getTexture('acacia_door_bottom') || 
+                    Object.values(this.textureManager.textureCache)[0];
+        }
+        
+        // Skip if no valid texture was found
+        if (!atlasUV) continue;
+
+        // Build the face positions
+        const facePositions = dir.positions.map(pos => [
+          pos[0] + x,
+          pos[1] + y,
+          pos[2] + z
+        ]);
+
+        // Each vertex has the same face normal
+        const faceNormals = new Array(4).fill(dir.normal);
+
+        // Apply the atlas offset + repeat to each corner's uv
+        const offsetX = atlasUV.offset.x;
+        const offsetY = atlasUV.offset.y;
+        const repeatX = atlasUV.repeat.x;
+        const repeatY = atlasUV.repeat.y;
+
+        const faceUVs = dir.uv.map(([u, v]) => {
+          return [
+            offsetX + u * repeatX,
+            offsetY + v * repeatY
+          ];
+        });
+        
+        // Determine if this texture should be tinted
+        let textureName = textureType;
+        if (blockType === BlockType.MULTI_SIDED) {
+          const blockName = blockInfo.blockName;
+          let faceName;
+          switch (dirKey) {
+            case 'py': faceName = Direction.TOP; break;
+            case 'ny': faceName = Direction.BOTTOM; break;
+            default: faceName = Direction.SIDES;
+          }
+          textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
+        }
+        
+        // Check if this texture needs tinting
+        if (this.blockRegistry.isTintedTexture(textureName)) {
+          // Get the tint color for this texture
+          const tintColor = this.blockRegistry.getTintColor(textureName);
+          
+          // Ensure we have a collection for this tint color
+          const tintKey = `${tintColor.r},${tintColor.g},${tintColor.b}`;
+          if (!collections.tintedByTexture[tintKey]) {
+            collections.tintedByTexture[tintKey] = {
+              color: tintColor,
+              collection: this._createEmptyCollection()
+            };
+          }
+          
+          // Add to the tinted collection
+          this._pushFace(collections.tintedByTexture[tintKey].collection, facePositions, faceNormals, faceUVs);
+        } else {
+          // Add to the standard collection
+          this._pushFace(collection, facePositions, faceNormals, faceUVs);
+        }
+      }
+    }
+  }
+  
   // Update animated materials
   update(deltaTime) {
-    // Update water shader uniforms
+    // Update both global and per-chunk special meshes
+    
+    // Legacy update for global special meshes
     if (this.specialMeshes[BlockType.WATER]) {
       const waterMesh = this.specialMeshes[BlockType.WATER];
       if (waterMesh.material && waterMesh.material.uniforms) {
@@ -41,7 +302,6 @@ export class MeshBuilder {
       }
     }
     
-    // Update tinted meshes if they have a time uniform
     if (this.specialMeshes.tinted) {
       for (const tintedMesh of this.specialMeshes.tinted) {
         if (tintedMesh.material && tintedMesh.material.uniforms && tintedMesh.material.uniforms.time) {
@@ -49,6 +309,101 @@ export class MeshBuilder {
         }
       }
     }
+    
+    // Update per-chunk special meshes
+    for (const [chunkKey, chunkSpecialMeshes] of Object.entries(this.specialMeshes)) {
+      // Skip entries that aren't chunk keys (like 'tinted')
+      if (!chunkKey.includes(',')) continue;
+      
+      // Update water shader
+      if (chunkSpecialMeshes[BlockType.WATER]) {
+        const waterMesh = chunkSpecialMeshes[BlockType.WATER];
+        if (waterMesh.material && waterMesh.material.uniforms) {
+          waterMesh.material.uniforms.time.value += deltaTime;
+        }
+      }
+      
+      // Update tinted meshes
+      if (chunkSpecialMeshes.tinted) {
+        for (const tintedMesh of chunkSpecialMeshes.tinted) {
+          if (tintedMesh.material && tintedMesh.material.uniforms && tintedMesh.material.uniforms.time) {
+            tintedMesh.material.uniforms.time.value += deltaTime;
+          }
+        }
+      }
+    }
+  }
+  
+  // Get directions for block face construction
+  _getDirections() {
+    return {
+      px: { // +X face
+        neighbor: [1, 0, 0],
+        positions: [
+          [1, 1, 1],
+          [1, 0, 1],
+          [1, 0, 0],
+          [1, 1, 0],
+        ],
+        normal: [1, 0, 0],
+        uv: [[0,1],[0,0],[1,0],[1,1]]
+      },
+      nx: { // -X face
+        neighbor: [-1, 0, 0],
+        positions: [
+          [0, 1, 0],
+          [0, 0, 0],
+          [0, 0, 1],
+          [0, 1, 1],
+        ],
+        normal: [-1, 0, 0],
+        uv: [[1,1],[1,0],[0,0],[0,1]]
+      },
+      py: { // +Y face
+        neighbor: [0, 1, 0],
+        positions: [
+          [0, 1, 1],
+          [1, 1, 1],
+          [1, 1, 0],
+          [0, 1, 0],
+        ],
+        normal: [0, 1, 0],
+        uv: [[0,1],[1,1],[1,0],[0,0]]
+      },
+      ny: { // -Y face
+        neighbor: [0, -1, 0],
+        positions: [
+          [0, 0, 0],
+          [1, 0, 0],
+          [1, 0, 1],
+          [0, 0, 1],
+        ],
+        normal: [0, -1, 0],
+        uv: [[0,0],[1,0],[1,1],[0,1]]
+      },
+      pz: { // +Z face
+        neighbor: [0, 0, 1],
+        positions: [
+          [1, 1, 1],
+          [0, 1, 1],
+          [0, 0, 1],
+          [1, 0, 1],
+        ],
+        normal: [0, 0, 1],
+        uv: [[1,1],[0,1],[0,0],[1,0]]
+      },
+      nz: { // -Z face
+        neighbor: [0, 0, -1],
+        positions: [
+          [0, 1, 0],
+          [1, 1, 0],
+          [1, 0, 0],
+          [0, 0, 0],
+        ],
+        normal: [0, 0, -1],
+        uv: [[0,1],[1,1],[1,0],[0,0]]
+      }
+    };
   }
   
   // Private methods
@@ -299,8 +654,19 @@ export class MeshBuilder {
     collection.currentIndex += 4;
   }
   
-  _createMeshes(collections, scene) {
+  _createMeshes(collections, scene, chunkX, chunkZ) {
     const meshes = [];
+    const chunkGroup = new THREE.Group();
+    
+    // Assign chunk identifier to the group for easier tracking
+    if (chunkX !== undefined && chunkZ !== undefined) {
+      chunkGroup.userData = { 
+        isChunk: true,
+        chunkX, 
+        chunkZ,
+        key: `${chunkX},${chunkZ}`
+      };
+    }
     
     // Create cross blocks mesh
     const crossColl = collections[BlockType.CROSS];
@@ -323,8 +689,8 @@ export class MeshBuilder {
 
       const mesh = new THREE.Mesh(geo, mat);
       mesh.receiveShadow = false;
-      mesh.castShadow = false;  // or true, up to you
-      scene.add(mesh);
+      mesh.castShadow = false;
+      chunkGroup.add(mesh);
       meshes.push(mesh);
     }
 
@@ -348,7 +714,7 @@ export class MeshBuilder {
       const mesh = new THREE.Mesh(geo, mat);
       mesh.receiveShadow = true;
       mesh.castShadow = true;
-      scene.add(mesh);
+      chunkGroup.add(mesh);
       meshes.push(mesh);
     }
     
@@ -375,7 +741,7 @@ export class MeshBuilder {
       const mesh = new THREE.Mesh(geo, mat);
       mesh.receiveShadow = true;
       mesh.castShadow = true;
-      scene.add(mesh);
+      chunkGroup.add(mesh);
       meshes.push(mesh);
     }
 
@@ -402,7 +768,6 @@ export class MeshBuilder {
         const waterUV = this.textureManager.getTexture('packed_ice');
         if (this.useAdvancedWaterShader) {
           // Use the new advanced water shader
-          console.log('texture', this.textureManager.atlasTexture);
           material = createAdvancedWaterMaterial(this.textureManager.atlasTexture, {
             offset: { x: waterUV.offset.x, y: waterUV.offset.y },
             repeat: { x: waterUV.repeat.x, y: waterUV.repeat.y }
@@ -419,10 +784,19 @@ export class MeshBuilder {
       const mesh = new THREE.Mesh(geo, material);
       mesh.receiveShadow = true;
       
-      // Store reference to special meshes for animation updates
-      this.specialMeshes[blockType] = mesh;
+      // For chunk-based meshes, store the special meshes in the chunk collection
+      if (chunkX !== undefined && chunkZ !== undefined) {
+        const chunkKey = `${chunkX},${chunkZ}`;
+        if (!this.specialMeshes[chunkKey]) {
+          this.specialMeshes[chunkKey] = {};
+        }
+        this.specialMeshes[chunkKey][blockType] = mesh;
+      } else {
+        // Legacy global storage
+        this.specialMeshes[blockType] = mesh;
+      }
       
-      scene.add(mesh);
+      chunkGroup.add(mesh);
       meshes.push(mesh);
     }
     
@@ -431,8 +805,6 @@ export class MeshBuilder {
       const { color, collection } = collections.tintedByTexture[tintKey];
       
       if (collection.positions.length === 0) continue;
-      
-      console.log(`Creating tinted mesh with color ${tintKey} (${collection.positions.length/3} vertices)`);
       
       const geo = new THREE.BufferGeometry();
       geo.setIndex(new THREE.BufferAttribute(new Uint32Array(collection.indices), 1));
@@ -451,14 +823,34 @@ export class MeshBuilder {
       mesh.receiveShadow = true;
       mesh.castShadow = true;
       
-      // Store the mesh for possible updates
-      if (!this.specialMeshes.tinted) {
-        this.specialMeshes.tinted = [];
+      // For chunk-based meshes, store tinted meshes in the chunk collection
+      if (chunkX !== undefined && chunkZ !== undefined) {
+        const chunkKey = `${chunkX},${chunkZ}`;
+        if (!this.specialMeshes[chunkKey]) {
+          this.specialMeshes[chunkKey] = {};
+        }
+        if (!this.specialMeshes[chunkKey].tinted) {
+          this.specialMeshes[chunkKey].tinted = [];
+        }
+        this.specialMeshes[chunkKey].tinted.push(mesh);
+      } else {
+        // Legacy global storage
+        if (!this.specialMeshes.tinted) {
+          this.specialMeshes.tinted = [];
+        }
+        this.specialMeshes.tinted.push(mesh);
       }
-      this.specialMeshes.tinted.push(mesh);
       
-      scene.add(mesh);
+      chunkGroup.add(mesh);
       meshes.push(mesh);
+    }
+
+    // Add the chunk group to the scene
+    scene.add(chunkGroup);
+    
+    // For chunk-based meshes, add the group to the list
+    if (chunkX !== undefined && chunkZ !== undefined) {
+      meshes.push(chunkGroup);
     }
 
     return meshes;

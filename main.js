@@ -71,6 +71,13 @@ export class Game {
 
     this.debugMenuVisible = false;
     this.debugMenuElement = null;
+    
+    // Initialize a toggle for the debug menu
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'F3') {
+        this.toggleDebugMenu();
+      }
+    });
   }
 
   async initialize() {
@@ -143,16 +150,29 @@ export class Game {
       0.1,
       1000
     );
-    camera.position.set(10, 50, 10);
+    camera.position.set(10, 70, 10);
     camera.lookAt(new THREE.Vector3(0, 0, 0));
     this.renderManager = new RenderManager(scene, camera);
 
     // Update the scene reference on the voxel world (which was created earlier)
     this.voxelWorld.scene = scene;
     
-    // Generate the terrain and build the mesh
-    this.voxelWorld.generateTerrain(100);  // or a different size if you want
-    this.voxelWorld.buildCulledMesh();
+    // Initialize the terrain system with dynamic chunk generation
+    this.voxelWorld.initializeTerrain(3); // Start with a small area (7x7 chunks)
+    
+    // Set a reasonable view distance for chunk loading/unloading
+    this.voxelWorld.setViewDistance(5); // 5 chunks in each direction
+    
+    // Build the initial chunks around the player
+    this.voxelWorld.buildAllChunkMeshes(camera.position.x, camera.position.z);
+    
+    // Setup chunk loading/unloading based on camera position
+    window.addEventListener('keydown', (e) => {
+      // Toggle between chunk-based and single mesh rendering with F6
+      if (e.key === 'F6') {
+        this.toggleChunkRendering();
+      }
+    });
 
     // Lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
@@ -163,12 +183,20 @@ export class Game {
     sunLight.castShadow = true;
     scene.add(sunLight);
 
-    this.inputHandler = new InputHandler(camera, document.body, { movementSpeed: 50.0 });
-
-
+    this.inputHandler = new InputHandler(camera, document.body, { movementSpeed: 100.0 }); // Faster movement to more quickly see chunks loading
+    
     // Store references on the Game instance
     this.scene = scene;
     this.camera = camera;
+    
+    // Flag to enable chunk-based rendering
+    this.useChunkRendering = true;
+    
+    // Last position to check for chunk updates
+    this.lastChunkUpdatePosition = {
+      x: camera.position.x,
+      z: camera.position.z
+    };
   }
 
   createDebugMenu() {
@@ -224,25 +252,110 @@ export class Game {
 
   updateDebugInfo() {
     if (!this.debugMenuVisible) return;  // Only update if visible
-    const calls = this.renderer.info.render.calls;
-    const triangles = this.renderer.info.render.triangles;
-    const points = this.renderer.info.render.points;
-    const lines = this.renderer.info.render.lines;
+    
+    // Get renderer info if available
+    let calls = 0, triangles = 0, points = 0, lines = 0;
+    if (this.renderManager && this.renderManager.renderer) {
+      const renderer = this.renderManager.renderer;
+      calls = renderer.info.render.calls;
+      triangles = renderer.info.render.triangles;
+      points = renderer.info.render.points;
+      lines = renderer.info.render.lines;
+    }
     
     // Get the active water shader type
     const waterShaderType = this.voxelWorld?.meshBuilder?.useAdvancedWaterShader ? 'Advanced' : 'Basic';
+    
+    // Get rendering mode
+    const renderingMode = this.useChunkRendering ? 'Chunk-Based' : 'Single Mesh';
+    
+    // Get chunk counts
+    const renderedChunks = this.voxelWorld?.meshBuilder?.chunkMeshes.size || 0;
+    const totalChunks = this.voxelWorld?.chunkManager?.chunks.size || 0;
+    
+    // Get view distance
+    const viewDistance = this.voxelWorld?.viewDistance || 0;
+    
+    // Get dynamic loading info
+    const dynamicLoading = this.useChunkRendering ? 'ON' : 'OFF';
+    
+    // Get camera position
+    const camX = Math.round(this.camera?.position.x || 0);
+    const camY = Math.round(this.camera?.position.y || 0);
+    const camZ = Math.round(this.camera?.position.z || 0);
 
     // Update text (you can add more info as needed)
     this.debugMenuElement.innerHTML = `
       <strong>DEBUG INFO</strong><br/>
       Draw Calls: ${calls}<br/>
       Triangles: ${triangles}<br/>
-      Lines: ${lines}<br/>
-      Points: ${points}<br/>
+      Position: ${camX}, ${camY}, ${camZ}<br/>
       Water Shader: ${waterShaderType}<br/>
+      Rendering: ${renderingMode}<br/>
+      Chunks: ${renderedChunks} rendered / ${totalChunks} total<br/>
+      View Distance: ${viewDistance} chunks<br/>
+      Dynamic Loading: ${dynamicLoading}<br/>
+      <small>Press F3 to hide/show debug</small>
       <small>Press F5 to toggle water shader</small>
+      <small>Press F6 to toggle chunk rendering</small>
     `;
-  } 
+  }
+  
+  // Toggle between chunk-based and single mesh rendering
+  toggleChunkRendering() {
+    this.useChunkRendering = !this.useChunkRendering;
+    
+    // Clear all meshes from the scene
+    this.voxelWorld.meshes.forEach(mesh => this.scene.remove(mesh));
+    this.voxelWorld.meshBuilder._removeAllChunkMeshes(this.scene);
+    
+    if (this.useChunkRendering) {
+      // Build chunk-based meshes
+      this.voxelWorld.buildAllChunkMeshes(
+        this.camera.position.x, 
+        this.camera.position.z
+      );
+      
+      // Display a message
+      const message = document.createElement('div');
+      message.textContent = 'Chunk-Based Rendering Enabled';
+      message.style.position = 'absolute';
+      message.style.top = '50%';
+      message.style.left = '50%';
+      message.style.transform = 'translate(-50%, -50%)';
+      message.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      message.style.color = 'white';
+      message.style.padding = '10px';
+      message.style.borderRadius = '5px';
+      message.style.zIndex = '1000';
+      document.body.appendChild(message);
+      
+      setTimeout(() => {
+        document.body.removeChild(message);
+      }, 2000);
+    } else {
+      // Build single mesh
+      this.voxelWorld.buildCulledMesh();
+      
+      // Display a message
+      const message = document.createElement('div');
+      message.textContent = 'Single Mesh Rendering Enabled';
+      message.style.position = 'absolute';
+      message.style.top = '50%';
+      message.style.left = '50%';
+      message.style.transform = 'translate(-50%, -50%)';
+      message.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      message.style.color = 'white';
+      message.style.padding = '10px';
+      message.style.borderRadius = '5px';
+      message.style.zIndex = '1000';
+      document.body.appendChild(message);
+      
+      setTimeout(() => {
+        document.body.removeChild(message);
+      }, 2000);
+    }
+  }
 
   animate = () => {
     stats.begin();
@@ -256,11 +369,78 @@ export class Game {
     // Update voxel world animations (like water)
     if (this.voxelWorld) {
       this.voxelWorld.update(delta);
+      
+      // Check if we need to update visible chunks
+      if (this.useChunkRendering && this.camera) {
+        const camPos = this.camera.position;
+        
+        // Check if camera has moved a significant distance
+        const lastPos = this.lastChunkUpdatePosition;
+        const dx = Math.abs(camPos.x - lastPos.x);
+        const dz = Math.abs(camPos.z - lastPos.z);
+        
+        // Update visible chunks more frequently (every 4 units) to make loading/unloading more visible
+        if (dx > 4 || dz > 4) {
+          // The updateVisibleChunks method now returns the number of chunks generated
+          const newChunksGenerated = this.voxelWorld.updateVisibleChunks(camPos.x, camPos.z);
+          
+          // Update last position
+          this.lastChunkUpdatePosition = {
+            x: camPos.x,
+            z: camPos.z
+          };
+          
+          // Show visual indication of chunk update in debug mode
+          if (this.debugMenuVisible) {
+            console.log(`Updated chunks at position: ${Math.round(camPos.x)}, ${Math.round(camPos.z)}, generated ${newChunksGenerated} new chunks`);
+            
+            // Display a temporary message about new chunks if any were generated
+            if (newChunksGenerated > 0) {
+              const chunkMessage = document.createElement('div');
+              chunkMessage.textContent = `Generated ${newChunksGenerated} new chunks`;
+              chunkMessage.style.position = 'absolute';
+              chunkMessage.style.bottom = '20px';
+              chunkMessage.style.left = '50%';
+              chunkMessage.style.transform = 'translateX(-50%)';
+              chunkMessage.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+              chunkMessage.style.color = 'white';
+              chunkMessage.style.padding = '5px 10px';
+              chunkMessage.style.borderRadius = '5px';
+              chunkMessage.style.zIndex = '1000';
+              document.body.appendChild(chunkMessage);
+              
+              setTimeout(() => {
+                document.body.removeChild(chunkMessage);
+              }, 1500);
+            }
+            
+            // Briefly flash the debug menu to indicate chunk update - green for new chunks, blue for visibility
+            if (this.debugMenuElement) {
+              const originalBackground = this.debugMenuElement.style.backgroundColor;
+              
+              if (newChunksGenerated > 0) {
+                // Flash green when new chunks are generated
+                this.debugMenuElement.style.backgroundColor = 'rgba(50, 150, 50, 0.7)';
+              } else {
+                // Flash blue when just updating visibility
+                this.debugMenuElement.style.backgroundColor = 'rgba(50, 100, 150, 0.7)';
+              }
+              
+              setTimeout(() => {
+                this.debugMenuElement.style.backgroundColor = originalBackground;
+              }, 200);
+            }
+          }
+        }
+      }
     }
     
     if (this.renderManager) {
       this.renderManager.render();
     }
+    
+    // Update debug info
+    this.updateDebugInfo();
 
     stats.end();
     requestAnimationFrame(this.animate);

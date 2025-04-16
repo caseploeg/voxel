@@ -65,3 +65,7 @@
 
 11:31pm tuesday
 - real perlin noise generation !! lets goo
+
+10:13am wednesday
+- dynamic chunk rendering
+
