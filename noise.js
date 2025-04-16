@@ -9,7 +9,7 @@ export class NoiseWorld {
     this.noise = new Noise(Math.random()); // or any integer seed
   }
   
-  generateTerrain(worldSize = 20) {
+  generateTerrain(worldSize) {
     // 1) Register any multi-sided blocks if needed
     if (!this.blockRegistry.isMultiSidedBlock('grass_block')) {
       this.blockRegistry.registerMultiSidedBlock('grass_block', {

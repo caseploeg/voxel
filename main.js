@@ -135,6 +135,7 @@ export class Game {
     // Create a Three.js scene
     const scene = new THREE.Scene();
 
+    scene.background = new THREE.Color(0xAAAAFF);
     // Set up a camera (fov, aspect ratio, near, far)
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -150,7 +151,7 @@ export class Game {
     this.voxelWorld.scene = scene;
     
     // Generate the terrain and build the mesh
-    this.voxelWorld.generateTerrain(20);  // or a different size if you want
+    this.voxelWorld.generateTerrain(100);  // or a different size if you want
     this.voxelWorld.buildCulledMesh();
 
     // Lights
@@ -217,6 +218,7 @@ export class Game {
     }, 2000);
     
     // Rebuild the mesh with the new shader
+    debugger;
     this.voxelWorld.buildCulledMesh();
   }
 

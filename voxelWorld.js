@@ -19,11 +19,11 @@ export class VoxelWorld {
   }
 
   // Generate terrain
-  generateTerrain(worldSize = 5) {
+  generateTerrain(worldSize = 10000) {
     this.worldData.generateTerrain(worldSize);
     
     // Add some water blocks for demonstration
-    this.addWaterFeature(Math.floor(worldSize/2), 3, Math.floor(worldSize/2), 3, 1, 3);
+    this.addWaterFeature(Math.floor(worldSize/2), 0, Math.floor(worldSize/2), 3, 1, 3);
   }
   
   // Add a water feature (like a pond or lake)
@@ -31,7 +31,7 @@ export class VoxelWorld {
     for (let dx = 0; dx < width; dx++) {
       for (let dy = 0; dy < height; dy++) {
         for (let dz = 0; dz < depth; dz++) {
-          this.worldData.setBlock(x + dx, y + dy, z + dz, BlockType.WATER, 'water_still');
+          this.worldData.setBlock(x + dx, y + dy, z + dz, BlockType.WATER, 'ice');
         }
       }
     }

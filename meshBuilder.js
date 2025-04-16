@@ -52,7 +52,7 @@ export class MeshBuilder {
   }
   
   // Private methods
-  _createGeometryCollections() {
+  _createGeometryCollections = ()  => {
     const collections = {
       [BlockType.STANDARD]: this._createEmptyCollection(),
       [BlockType.MULTI_SIDED]: this._createEmptyCollection(),
@@ -396,13 +396,13 @@ export class MeshBuilder {
       // Create appropriate material based on block type
       if (blockType === BlockType.WATER) {
         // Get a water texture from the atlas or use the first available texture
-        const waterTextureName = Object.keys(this.textureManager.textureCache).find(name => 
-          name.includes('ice') || name.includes('water')) || Object.keys(this.textureManager.textureCache)[0];
+        //const waterTextureName = Object.keys(this.textureManager.textureCache).find(name => 
+          // name.includes('ice') || name.includes('water')) || Object.keys(this.textureManager.textureCache)[0];
           
-        const waterUV = this.textureManager.getTexture(waterTextureName);
-        
+        const waterUV = this.textureManager.getTexture('packed_ice');
         if (this.useAdvancedWaterShader) {
           // Use the new advanced water shader
+          console.log('texture', this.textureManager.atlasTexture);
           material = createAdvancedWaterMaterial(this.textureManager.atlasTexture, {
             offset: { x: waterUV.offset.x, y: waterUV.offset.y },
             repeat: { x: waterUV.repeat.x, y: waterUV.repeat.y }

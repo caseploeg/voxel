@@ -47,7 +47,7 @@ export class BlockRegistry {
     // Store which textures should be tinted and with what color
     this.tintedTextures = {
       // Example: grass_block_top => a shade of green
-      'grass_block_top': new THREE.Color(0.6, 0.8, 0.4),
+      'grass_block_top': new THREE.Color(0.2, 1.0, 0.2),
       'grass_block_side': new THREE.Color(0.6, 0.8, 0.4),
       'oak_leaves': new THREE.Color(0.4, 0.7, 0.3),
       'birch_leaves': new THREE.Color(0.5, 0.8, 0.3),
