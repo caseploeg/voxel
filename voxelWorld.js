@@ -1,7 +1,7 @@
 // VoxelWorld.js
 import { WorldData } from './worldData.js';
 import { MeshBuilder } from './meshBuilder.js';
-import { BlockRegistry } from './blockRegistry.js';
+import { BlockRegistry, BlockType } from './blockRegistry.js';
 import * as THREE from 'three';
 
 export class VoxelWorld {

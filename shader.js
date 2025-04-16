@@ -66,9 +66,11 @@ export function createAdvancedWaterMaterial(atlasTexture, uvMapping) {
     return material;
 }
 
-// Only create the demo scene if we're running as a standalone module
-if (import.meta.url.includes('/shader.js')) {
-    // Create a small demo scene for testing only
+// Only create the demo scene if this is the main module (not imported)
+if (import.meta.main || 
+    (typeof import.meta.url === 'string' && 
+     import.meta.url === window.location.href.replace('file://', '').replace(/\/index.html.*$/, '/shader.js'))) {
+    console.log('Running shader.js as standalone - creating demo scene');
     createShaderDemo();
 }
 
