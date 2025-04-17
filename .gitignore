@@ -32,3 +32,6 @@ Thumbs.db
 *.bak
 
 **/CLAUDE.local.md
+
+# Local Netlify folder
+.netlify

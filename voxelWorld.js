@@ -8,7 +8,6 @@ import * as THREE from 'three';
 import { TerrainGeneratorFactory, TERRAIN_TYPE, PERLIN_BLOCK, DENSITY_BLOCK } from './terrainGenerator.js';
 // Import the worker-based chunk and geometry managers
 import { ChunkGenerationManager } from './workers/chunkManager.js';
-import { GeometryManager } from './workers/geometryManager.js';
 
 export class VoxelWorld {
   constructor(scene, textureManager, terrainType = TERRAIN_TYPE.PERLIN) {
