@@ -409,14 +409,7 @@ export class VoxelWorld {
            
       // When geometry is ready, build the mesh on the main thread
       const mainThreadStart = performance.now();
-      
-      // Create buffer geometries from the typed arrays
-      const meshes = this._createMeshesFromGeometryBuffers(
-        result.geometryBuffers,
-        chunkX,
-        chunkZ
-      );
-      
+           
       const mainThreadEnd = performance.now();
       const mainThreadTime = mainThreadEnd - mainThreadStart;
       
