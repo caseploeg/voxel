@@ -38,7 +38,6 @@ export class VoxelWorld {
     this.chunkGenManager = new ChunkGenerationManager(this.terrainGen, this.BLOCK_NAME_MAP);
     
     // Create the geometry worker manager
-    this.geometryManager = new GeometryManager(scene, textureManager, this.blockRegistry);
     // Store a reference to textureManager so we can use it later
     this.textureManager = textureManager;
     
@@ -61,7 +60,6 @@ export class VoxelWorld {
     // Initialize the workers (not awaited to avoid blocking constructor)
     Promise.all([
       this.chunkGenManager.initialize(),
-      this.geometryManager.initialize()
     ]).catch(error => {
       console.error('Failed to initialize workers:', error);
     });
@@ -94,8 +92,6 @@ export class VoxelWorld {
     this.chunkGenManager = new ChunkGenerationManager(this.terrainGen, this.BLOCK_NAME_MAP);
     
     // Also shutdown and recreate the geometry manager
-    this.geometryManager.shutdown();
-    this.geometryManager = new GeometryManager(this.scene, this.textureManager, this.blockRegistry);
     
     // Reset chunk generation state
     this.chunkQueue = [];
@@ -114,7 +110,6 @@ export class VoxelWorld {
     // Initialize the workers again
     Promise.all([
       this.chunkGenManager.initialize(),
-      this.geometryManager.initialize()
     ]).catch(error => {
       console.error('Failed to initialize workers:', error);
     });
@@ -411,20 +406,7 @@ export class VoxelWorld {
         this.chunksBeingBuilt.delete(chunkKey);
         return null;
       }
-      
-      // Update player position for prioritization
-      if (this.camera) {
-        this.geometryManager.updatePlayerPosition(this.camera.position.x, this.camera.position.z);
-      }
-      
-      // Request geometry from the worker
-      const result = await this.geometryManager.requestGeometry(
-        chunkData.worldData, // The actual blocks data
-        chunkX,
-        chunkZ,
-        this.chunkManager.chunkSize
-      );
-      
+           
       // When geometry is ready, build the mesh on the main thread
       const mainThreadStart = performance.now();
       
@@ -589,7 +571,6 @@ export class VoxelWorld {
   // Update visible chunks based on player position
   async updateVisibleChunks(playerX, playerZ) {
     // Update the player position for geometry manager prioritization
-    this.geometryManager.updatePlayerPosition(playerX, playerZ);
     this.camera = { position: { x: playerX, y: 0, z: playerZ } }; // Simple camera object if not set
     
     // First make sure we have all the needed chunks generated
