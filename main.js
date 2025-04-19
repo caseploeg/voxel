@@ -17,10 +17,23 @@ const stats = new Stats();
 stats.showPanel(0);
 document.body.appendChild(stats.dom);
 
-const meta = import.meta.glob('/public/textures/*.png', {
-  as: 'url',
-  eager: true
-});
+
+const files = import.meta.glob('./assets/textures/*.png', {
+  query:  '?url',      // replaces  as: 'url'
+  import: 'default',   // give me the default export (the URL string)
+  eager:  true,        // resolve at build/start‑up time
+})
+
+
+
+
+
+const meta = import.meta.glob('./assets/textures/*.png', {
+      query:  '?url',
+      import: 'default',
+      eager:  true,
+    });
+debugger;
 
 const validBlockPatterns = [
   // Basic block textures
@@ -48,10 +61,11 @@ const isValidTexture = (path) => {
   return validBlockPatterns.some(pattern => path.includes(pattern));
 };
 
-// Select a reasonable subset of textures for initial load
-let texturePaths = Object.keys(meta)
-  .filter(isValidTexture)
-  .map(path => path);
+// keep the key for filtering, but pass the VALUE (the served URL) to the loader
+const texturePaths = Object.entries(meta)            // [ [key , value], ... ]
+  .filter(([path /* key */, _url]) => isValidTexture(path))
+  .map(([ _path , url /* value */]) => url);         // <-- correct URL
+
 
 export class Game {
   constructor() {

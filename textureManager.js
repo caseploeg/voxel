@@ -47,7 +47,7 @@ export class TextureManager {
   }
 
   async load() {
-
+    debugger;
     const loadedImages = await this._loadImages(this.texturePaths);
     const { canvas, atlasMapping } = this._createAtlasCanvas(loadedImages);
     this.atlasTexture = this._createAtlasTexture(canvas);
