@@ -8,8 +8,16 @@
     </style>
   </head>
   <body>
-    <script type="module" src="/main.js"></script> 
-  </body>
+<body>
+            <!-- Bootstrap your app -->
+            <script type="module">
+              import { Game } from './main.js';
+              const game = new Game();
+              game.initialize();
+            </script>
+          </body>
+
+  
 </html>
     
 
