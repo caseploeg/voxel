@@ -7,8 +7,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 
 import { TextureManager } from './textureManager.js';
 import { InputHandler } from './inputHandler.js'; 
-import { VoxelWorld } from './voxelWorld.js';
-import { TERRAIN_TYPE } from './terrainGenerator.js';
+import { VoxelWorld } from './voxelWorld.js'; import { TERRAIN_TYPE } from './terrainGenerator.js';
 import { RenderManager } from './renderManager.js';
 import { TextureDebugger } from './textureDebugger.js';
 
@@ -62,8 +61,7 @@ const isValidTexture = (path) => {
 
 // keep the key for filtering, but pass the VALUE (the served URL) to the loader
 const texturePaths = Object.entries(meta)            // [ [key , value], ... ]
-  .filter(([path /* key */, _url]) => isValidTexture(path))
-  .map(([ _path , url /* value */]) => url);         // <-- correct URL
+  .map(([ _path , url /* value */]) => url)         // <-- correct URL
 
 
 export class Game {

@@ -425,15 +425,6 @@ export class VoxelWorld {
           mainThreadTime: 0
         };
       }
-      
-      this.buildStats.totalMeshes++;
-      this.buildStats.totalTime += result.buildTime + mainThreadTime;
-      this.buildStats.workerTime += result.buildTime;
-      this.buildStats.mainThreadTime += mainThreadTime;
-      this.buildStats.maxTime = Math.max(this.buildStats.maxTime, result.buildTime + mainThreadTime);
-      this.buildStats.minTime = Math.min(this.buildStats.minTime, result.buildTime + mainThreadTime);
-      this.buildStats.lastTime = result.buildTime + mainThreadTime;
-      this.buildStats.lastWorkerTime = result.buildTime;
       this.buildStats.lastMainThreadTime = mainThreadTime;
       
       // Remove from being built
