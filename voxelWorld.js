@@ -549,7 +549,7 @@ export class VoxelWorld {
     // Store in MeshBuilder's chunkMeshes
     this.meshBuilder.chunkMeshes.set(`${chunkX},${chunkZ}`, meshes);
     
-    return meshes;
+    return this.meshes;
   }
   
   // Update visible chunks based on player position

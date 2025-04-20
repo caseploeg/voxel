@@ -59,8 +59,11 @@ const isValidTexture = (path) => {
   return validBlockPatterns.some(pattern => path.includes(pattern));
 };
 
+
+
 // keep the key for filtering, but pass the VALUE (the served URL) to the loader
 const texturePaths = Object.entries(meta)            // [ [key , value], ... ]
+  .filter(([path /* key */, _url]) => isValidTexture(path))
   .map(([ _path , url /* value */]) => url)         // <-- correct URL
 
 
