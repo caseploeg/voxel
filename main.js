@@ -33,7 +33,6 @@ const meta = import.meta.glob('./assets/textures/*.png', {
       import: 'default',
       eager:  true,
     });
-debugger;
 
 const validBlockPatterns = [
   // Basic block textures

@@ -1,6 +1,1 @@
-import { defineConfig } from 'vite'
-
-export default defineConfig({
-  base: '/voxel',
-})
-
+import { defineConfig } from 'vite'; export default defineConfig({ base: '/voxel/' }); 
