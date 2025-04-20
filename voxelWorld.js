@@ -430,7 +430,7 @@ export class VoxelWorld {
       // Remove from being built
       this.chunksBeingBuilt.delete(chunkKey);
       
-      return meshes;
+      return this.meshes;
     } catch (error) {
       console.error(`Error building chunk mesh at ${chunkX},${chunkZ}:`, error);
       this.chunksBeingBuilt.delete(chunkKey);
