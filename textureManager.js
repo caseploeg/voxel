@@ -74,6 +74,25 @@ export class TextureManager {
   }
 
   /**
+   * Get UV mapping data for a texture (for mesh building)
+   * @param {string} name - Texture name (without path/extension)
+   * @return {Object} UV mapping data with offset and repeat properties
+   */
+  getTextureUV(name) {
+    if (!this.isLoaded) {
+      console.warn('TextureManager: Textures not loaded yet');
+      return null;
+    }
+    const texture = this.textureCache[name];
+    if (!texture) return null;
+    
+    return {
+      offset: { x: texture.offset.x, y: texture.offset.y },
+      repeat: { x: texture.repeat.x, y: texture.repeat.y }
+    };
+  }
+
+  /**
    * Get a material with the specified texture
    * @param {string} name - Texture name
    * @param {Object} materialOptions - Additional material options
@@ -161,8 +180,10 @@ export class TextureManager {
     const textures = {};
     
     for (const texturePath in atlasMapping) {
-        // Extract the texture name from the path (e.g., 'ice' from 'textures/ice.png')
-        const textureName = texturePath.split('/').pop().split('.')[0];
+        // Extract the texture name from the path (e.g., 'ice' from 'textures/ice-hash.png')
+        const filename = texturePath.split('/').pop().split('.')[0];
+        // Remove the hash suffix (e.g., 'dirt-v5D8UOVm' becomes 'dirt')
+        const textureName = filename.split('-')[0];
         
         // Create a clone of the atlas texture for each individual texture
         const texture = atlasTexture.clone();

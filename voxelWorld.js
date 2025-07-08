@@ -413,54 +413,21 @@ export class VoxelWorld {
         return null;
       }
       
-      // Update player position for prioritization
-      if (this.camera) {
-        this.geometryManager.updatePlayerPosition(this.camera.position.x, this.camera.position.z);
-      }
+      // Use the existing MeshBuilder directly (much simpler!)
+      console.log(`Building mesh for chunk ${chunkX},${chunkZ}`);
+      console.log('Chunk data:', chunkData);
+      console.log('Texture manager loaded:', this.textureManager.isLoaded);
+      console.log('Available textures:', Object.keys(this.textureManager.textureCache));
       
-      // Request geometry from the worker
-      const result = await this.geometryManager.requestGeometry(
-        chunkData.worldData, // The actual blocks data
-        chunkX,
-        chunkZ,
+      const meshes = this.meshBuilder.buildChunkMesh(
+        chunkData, 
+        this.scene, 
+        chunkX, 
+        chunkZ, 
         this.chunkManager.chunkSize
       );
       
-      // When geometry is ready, build the mesh on the main thread
-      const mainThreadStart = performance.now();
-      
-      // Create buffer geometries from the typed arrays
-      const meshes = this._createMeshesFromGeometryBuffers(
-        result.geometryBuffers,
-        chunkX,
-        chunkZ
-      );
-      
-      const mainThreadEnd = performance.now();
-      const mainThreadTime = mainThreadEnd - mainThreadStart;
-      
-      // Track mesh building performance metrics
-      if (!this.buildStats) {
-        this.buildStats = {
-          totalMeshes: 0,
-          totalTime: 0,
-          maxTime: 0,
-          minTime: Number.MAX_SAFE_INTEGER,
-          lastTime: 0,
-          workerTime: 0,
-          mainThreadTime: 0
-        };
-      }
-      
-      this.buildStats.totalMeshes++;
-      this.buildStats.totalTime += result.buildTime + mainThreadTime;
-      this.buildStats.workerTime += result.buildTime;
-      this.buildStats.mainThreadTime += mainThreadTime;
-      this.buildStats.maxTime = Math.max(this.buildStats.maxTime, result.buildTime + mainThreadTime);
-      this.buildStats.minTime = Math.min(this.buildStats.minTime, result.buildTime + mainThreadTime);
-      this.buildStats.lastTime = result.buildTime + mainThreadTime;
-      this.buildStats.lastWorkerTime = result.buildTime;
-      this.buildStats.lastMainThreadTime = mainThreadTime;
+      console.log(`Created ${meshes ? meshes.length : 0} meshes for chunk ${chunkX},${chunkZ}`);
       
       // Remove from being built
       this.chunksBeingBuilt.delete(chunkKey);
