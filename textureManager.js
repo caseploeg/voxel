@@ -83,7 +83,10 @@ export class TextureManager {
       return null;
     }
     const texture = this.textureCache[name];
-    if (!texture) return null;
+    if (!texture) {
+      console.warn(`TextureManager: Texture '${name}' not found. Available textures:`, Object.keys(this.textureCache));
+      return null;
+    }
     
     return {
       offset: { x: texture.offset.x, y: texture.offset.y },
@@ -179,10 +182,23 @@ export class TextureManager {
     const textures = {};
     
     for (const texturePath in atlasMapping) {
-        // Extract the texture name from the path (e.g., 'ice' from 'textures/ice-hash.png')
+        // Extract the texture name from the path - handle both dev and production formats
+        let textureName;
+        
+        // Get the filename without extension
         const filename = texturePath.split('/').pop().split('.')[0];
-        // Remove the hash suffix (e.g., 'dirt-v5D8UOVm' becomes 'dirt')
-        const textureName = filename.split('-')[0];
+        
+        // In production, Vite adds hashes like 'stone-abc123'
+        // In development, it might be just 'stone'
+        if (filename.includes('-')) {
+            // Split on the first dash and take everything before it
+            textureName = filename.split('-')[0];
+        } else {
+            textureName = filename;
+        }
+        
+        // Log for debugging
+        console.log(`Mapping texture path: ${texturePath} -> ${textureName}`);
         
         // Create a clone of the atlas texture for each individual texture
         const texture = atlasTexture.clone();
@@ -191,12 +207,16 @@ export class TextureManager {
         const uv = atlasMapping[texturePath];
         texture.offset.set(uv.offset.x, uv.offset.y);
         texture.repeat.set(uv.size.x, uv.size.y);
-        //texture.needsUpdate = true;
+        texture.needsUpdate = true;
         
         // Store in our textures map
         textures[textureName] = texture;
+        
+        // Also store the original path for debugging
+        textures[textureName]._originalPath = texturePath;
     }
     
+    console.log('Texture cache created:', Object.keys(textures));
     return textures;
   }
 }
