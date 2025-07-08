@@ -29,6 +29,17 @@ export class TextureManager {
   }
 
   /**
+   * Set texture entries (with path and URL mapping)
+   * @param {Array<Object>} entries - Array of {path, url} objects
+   * @return {TextureManager} this instance for chaining
+   */
+  setTextureEntries(entries) {
+    this.textureEntries = entries;
+    this.texturePaths = entries.map(entry => entry.url);
+    return this;
+  }
+
+  /**
    * Load all textures and create atlas
    * @return {Promise} Resolves when textures are loaded and atlas is created
    */
@@ -181,30 +192,41 @@ export class TextureManager {
   _createTextureMap(atlasTexture, atlasMapping) {
     const textures = {};
     
-    for (const texturePath in atlasMapping) {
-        // Extract the texture name from the path - handle both dev and production formats
+    // Create a map from URL to original path for name extraction
+    const urlToPath = {};
+    if (this.textureEntries) {
+      this.textureEntries.forEach(entry => {
+        urlToPath[entry.url] = entry.path;
+      });
+    }
+    
+    for (const textureUrl in atlasMapping) {
+        // Get the original path from our mapping
+        const originalPath = urlToPath[textureUrl];
         let textureName;
         
-        // Get the filename without extension
-        const filename = texturePath.split('/').pop().split('.')[0];
-        
-        // In production, Vite adds hashes like 'stone-abc123'
-        // In development, it might be just 'stone'
-        if (filename.includes('-')) {
-            // Split on the first dash and take everything before it
-            textureName = filename.split('-')[0];
+        if (originalPath) {
+          // Extract name from the original path (e.g., './assets/textures/stone.png' -> 'stone')
+          const filename = originalPath.split('/').pop().split('.')[0];
+          textureName = filename;
         } else {
+          // Fallback: try to extract from URL if no original path
+          const filename = textureUrl.split('/').pop().split('.')[0];
+          if (filename.includes('-')) {
+            textureName = filename.split('-')[0];
+          } else {
             textureName = filename;
+          }
         }
         
         // Log for debugging
-        console.log(`Mapping texture path: ${texturePath} -> ${textureName}`);
+        console.log(`Mapping texture URL: ${textureUrl} (original: ${originalPath}) -> ${textureName}`);
         
         // Create a clone of the atlas texture for each individual texture
         const texture = atlasTexture.clone();
         
         // Set the UV mapping for this specific texture
-        const uv = atlasMapping[texturePath];
+        const uv = atlasMapping[textureUrl];
         texture.offset.set(uv.offset.x, uv.offset.y);
         texture.repeat.set(uv.size.x, uv.size.y);
         texture.needsUpdate = true;
@@ -213,7 +235,8 @@ export class TextureManager {
         textures[textureName] = texture;
         
         // Also store the original path for debugging
-        textures[textureName]._originalPath = texturePath;
+        textures[textureName]._originalPath = originalPath;
+        textures[textureName]._originalUrl = textureUrl;
     }
     
     console.log('Texture cache created:', Object.keys(textures));

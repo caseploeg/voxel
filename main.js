@@ -56,21 +56,21 @@ const isValidTexture = (path) => {
 
 
 
-// keep the key for filtering, but pass the VALUE (the served URL) to the loader
-const texturePaths = Object.entries(meta)            // [ [key , value], ... ]
+// Create a mapping of texture paths to URLs for proper name extraction
+const textureEntries = Object.entries(meta)            // [ [key , value], ... ]
   .filter(([path /* key */, _url]) => isValidTexture(path))
   .map(([ path , url /* value */]) => {
     console.log(`Loading texture: ${path} -> ${url}`);
-    return url;
+    return { path, url };
   });
 
-console.log(`Found ${texturePaths.length} valid textures to load:`, texturePaths);
+console.log(`Found ${textureEntries.length} valid textures to load:`, textureEntries);
 
 
 export class Game {
   constructor() {
     this.textures = new TextureManager();
-    this.textures.setTexturePaths(texturePaths);
+    this.textures.setTextureEntries(textureEntries);
     this.scene = null;
     this.camera = null;
     this.renderer = null;
