@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  // Remove base path for Netlify deployment
-  // base: '/voxel/',
+  // GitHub Pages deployment needs the repository name as base path
+  base: process.env.NODE_ENV === 'production' ? '/voxel/' : '/',
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
