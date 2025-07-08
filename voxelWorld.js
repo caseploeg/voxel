@@ -406,26 +406,21 @@ export class VoxelWorld {
         this.chunksBeingBuilt.delete(chunkKey);
         return null;
       }
-           
-      // When geometry is ready, build the mesh on the main thread
-      const mainThreadStart = performance.now();
-           
-      const mainThreadEnd = performance.now();
-      const mainThreadTime = mainThreadEnd - mainThreadStart;
       
-      // Track mesh building performance metrics
-      if (!this.buildStats) {
-        this.buildStats = {
-          totalMeshes: 0,
-          totalTime: 0,
-          maxTime: 0,
-          minTime: Number.MAX_SAFE_INTEGER,
-          lastTime: 0,
-          workerTime: 0,
-          mainThreadTime: 0
-        };
-      }
-      this.buildStats.lastMainThreadTime = mainThreadTime;
+      console.log(`Building mesh for chunk ${chunkX},${chunkZ}`);
+      console.log('Chunk data:', chunkData);
+      console.log('Texture manager loaded:', this.textureManager.isLoaded);
+      console.log('Available textures:', Object.keys(this.textureManager.textureCache));
+      
+      const meshes = this.meshBuilder.buildChunkMesh(
+        chunkData, 
+        this.scene, 
+        chunkX, 
+        chunkZ, 
+        this.chunkManager.chunkSize
+      );
+      
+      console.log(`Created ${meshes ? meshes.length : 0} meshes for chunk ${chunkX},${chunkZ}`);
       
       // Remove from being built
       this.chunksBeingBuilt.delete(chunkKey);

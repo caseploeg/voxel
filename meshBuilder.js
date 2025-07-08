@@ -34,6 +34,10 @@ export class MeshBuilder {
   
   // Build a mesh for an individual chunk
   buildChunkMesh(worldData, scene, chunkX, chunkZ, chunkSize = 16) {
+    console.log(`MeshBuilder: Building chunk ${chunkX},${chunkZ}`);
+    console.log('World data keys:', Object.keys(worldData.worldData || {}).length);
+    console.log('TextureManager loaded:', this.textureManager.isLoaded);
+    
     // Create separate collections for different block types
     const geometryCollections = this._createGeometryCollections();
     
@@ -43,12 +47,20 @@ export class MeshBuilder {
     
     // Process blocks for this chunk
     this._processChunkBlocks(worldData, geometryCollections, offsetX, offsetZ);
+    
+    console.log('Geometry collections after processing:');
+    Object.keys(geometryCollections).forEach(key => {
+      const positions = geometryCollections[key].positions;
+      console.log(`  ${key}: ${positions ? positions.length / 3 : 0} vertices`);
+    });
+    
     // Create meshes for this chunk
     const meshes = this._createMeshes(geometryCollections, scene, chunkX, chunkZ);
     
     // Store chunk meshes in our map
     this.chunkMeshes.set(`${chunkX},${chunkZ}`, meshes);
     
+    console.log(`MeshBuilder: Created ${meshes.length} meshes for chunk ${chunkX},${chunkZ}`);
     return meshes;
   }
 
@@ -227,7 +239,7 @@ export class MeshBuilder {
         let atlasUV;
         if (blockType === BlockType.STANDARD) {
           // For standard blocks, use the assigned texture
-          atlasUV = this.textureManager.getTexture(textureType);
+          atlasUV = this.textureManager.getTextureUV(textureType);
         } 
         else if (blockType === BlockType.MULTI_SIDED) {
           // For multi-sided blocks, select texture based on the face direction
@@ -242,7 +254,7 @@ export class MeshBuilder {
           
           // Get the texture for this face
           const textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
-          atlasUV = this.textureManager.getTexture(textureName);
+          atlasUV = this.textureManager.getTextureUV(textureName);
           
           if (!atlasUV) {
             continue;
@@ -251,12 +263,15 @@ export class MeshBuilder {
         else if (blockType === BlockType.WATER) {
           // For water, we'll use a specific texture or a default one
           // Later the shader will handle the special effects
-          atlasUV = this.textureManager.getTexture('acacia_door_bottom') || 
-                    Object.values(this.textureManager.textureCache)[0];
+          atlasUV = this.textureManager.getTextureUV('acacia_door_bottom') || 
+                    this.textureManager.getTextureUV(Object.keys(this.textureManager.textureCache)[0]);
         }
         
         // Skip if no valid texture was found
-        if (!atlasUV) continue;
+        if (!atlasUV) {
+          console.log(`Skipping face due to missing UV data for block type ${blockType}, texture ${textureType}`);
+          continue;
+        }
 
         // Build the face positions
         const facePositions = dir.positions.map(pos => [
@@ -578,7 +593,7 @@ export class MeshBuilder {
         let atlasUV;
         if (blockType === BlockType.STANDARD) {
           // For standard blocks, use the assigned texture
-          atlasUV = this.textureManager.getTexture(textureType);
+          atlasUV = this.textureManager.getTextureUV(textureType);
         } 
         else if (blockType === BlockType.MULTI_SIDED) {
           // For multi-sided blocks, select texture based on the face direction
@@ -593,7 +608,7 @@ export class MeshBuilder {
           
           // Get the texture for this face
           const textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
-          atlasUV = this.textureManager.getTexture(textureName);
+          atlasUV = this.textureManager.getTextureUV(textureName);
           
           if (!atlasUV) {
             continue;
@@ -602,12 +617,15 @@ export class MeshBuilder {
         else if (blockType === BlockType.WATER) {
           // For water, we'll use a specific texture or a default one
           // Later the shader will handle the special effects
-          atlasUV = this.textureManager.getTexture('acacia_door_bottom') || 
-                    Object.values(this.textureManager.textureCache)[0];
+          atlasUV = this.textureManager.getTextureUV('acacia_door_bottom') || 
+                    this.textureManager.getTextureUV(Object.keys(this.textureManager.textureCache)[0]);
         }
         
         // Skip if no valid texture was found
-        if (!atlasUV) continue;
+        if (!atlasUV) {
+          console.log(`Skipping face due to missing UV data for block type ${blockType}, texture ${textureType}`);
+          continue;
+        }
 
         // Build the face positions
         const facePositions = dir.positions.map(pos => [
@@ -897,7 +915,7 @@ export class MeshBuilder {
     }
     
     // Get the atlas UV for this texture
-    const atlasUV = this.textureManager.getTexture(textureName);
+    const atlasUV = this.textureManager.getTextureUV(textureName);
     if (!atlasUV) {
       console.warn("Texture not found for cross block:", textureName);
       return;
