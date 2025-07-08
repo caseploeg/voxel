@@ -17,11 +17,6 @@ stats.showPanel(0);
 document.body.appendChild(stats.dom);
 
 
-const files = import.meta.glob('./assets/textures/*.png', {
-  query:  '?url',      // replaces  as: 'url'
-  import: 'default',   // give me the default export (the URL string)
-  eager:  true,        // resolve at build/start‑up time
-})
 
 
 
