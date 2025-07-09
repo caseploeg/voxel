@@ -9,7 +9,9 @@
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
+    "lil-gui": "^0.20.0",
     "noisejs": "^2.1.0",
+    "spectorjs": "^0.9.30",
     "stats.js": "^0.17.0",
     "three": "^0.175.0"
   },

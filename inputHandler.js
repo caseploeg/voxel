@@ -62,7 +62,10 @@ export class InputHandler {
         case 'KeyS': this.movement.back    = true; break;
         case 'KeyA': this.movement.left    = true; break;
         case 'KeyD': this.movement.right   = true; break;
-        case 'Space': this.movement.up     = true; break;
+        case 'Space': 
+          event.preventDefault(); // Prevent default space behavior (scrolling)
+          this.movement.up = true; 
+          break;
         case 'ShiftLeft': this.movement.down = true; break;
       }
     });
@@ -79,7 +82,10 @@ export class InputHandler {
         case 'KeyS': this.movement.back    = false; break;
         case 'KeyA': this.movement.left    = false; break;
         case 'KeyD': this.movement.right   = false; break;
-        case 'Space': this.movement.up     = false; break;
+        case 'Space': 
+          event.preventDefault(); // Prevent default space behavior (scrolling)
+          this.movement.up = false; 
+          break;
         case 'ShiftLeft': this.movement.down = false; break;
       }
 

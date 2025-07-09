@@ -10,11 +10,7 @@ import { InputHandler } from './inputHandler.js';
 import { VoxelWorld } from './voxelWorld.js'; import { TERRAIN_TYPE } from './terrainGenerator.js';
 import { RenderManager } from './renderManager.js';
 import { TextureDebugger } from './textureDebugger.js';
-
-import Stats from 'stats.js';
-const stats = new Stats();
-stats.showPanel(0);
-document.body.appendChild(stats.dom);
+import { Profiler } from './profiler.js';
 
 
 
@@ -83,14 +79,27 @@ export class Game {
     this.inputHandler = null;
     this.renderManager = null;
     this.textureDebugger = null;
+    
+    // Initialize comprehensive profiler
+    this.profiler = new Profiler();
 
     this.debugMenuVisible = false;
     this.debugMenuElement = null;
+    
+    // Help menu for keyboard controls
+    this.helpMenuVisible = false;
+    this.helpMenuElement = null;
     
     // Initialize a toggle for the debug menu
     document.addEventListener('keydown', (e) => {
       if (e.key === 'F3') {
         this.toggleDebugMenu();
+      }
+      if (e.key === 'h' || e.key === 'H') {
+        this.toggleHelpMenu();
+      }
+      if (e.key === 'Escape' && this.helpMenuVisible) {
+        this.toggleHelpMenu();
       }
     });
   }
@@ -100,7 +109,7 @@ export class Game {
       await this.textures.load();   // Load the atlas
       
       // Create and initialize the voxel world (needed for the block registry)
-      this.voxelWorld = new VoxelWorld(null, this.textures);
+      this.voxelWorld = new VoxelWorld(null, this.textures, TERRAIN_TYPE.PERLIN, this.profiler);
       
       // Create texture debugger after textures are loaded
       this.textureDebugger = new TextureDebugger(this.textures, this.voxelWorld.blockRegistry);
@@ -108,9 +117,14 @@ export class Game {
       
       this.initScene();
       this.createDebugMenu();
+      this.createHelpMenu();
+      this.createHelpHint();
       
       // Show debug menu by default so player can see worker thread status
       this.toggleDebugMenu();
+      
+      // Show a brief welcome message about the help system
+      this.showWelcomeMessage();
       
       // Setup keyboard controls for texture debugger, water shader toggle, and terrain type
       window.addEventListener('keydown', (e) => {
@@ -123,12 +137,30 @@ export class Game {
         if (e.key === 'F1') {
           this.toggleTerrainType();
         }
+        if (e.key === 'F8') {
+          this.profiler.toggleRecording();
+        }
+        if (e.key === 'F9') {
+          this.profiler.captureWebGLFrame();
+        }
+        if (e.key === 'F10') {
+          this.profiler.setBaseline();
+        }
+        if (e.key === 'F11') {
+          this.profiler.generateReport();
+        }
+        if (e.key === 'F12') {
+          this.profiler.exportData();
+        }
       });
       
       // Add window unload handler to clean up workers
       window.addEventListener('beforeunload', () => {
         if (this.voxelWorld) {
           this.voxelWorld.cleanup();
+        }
+        if (this.profiler) {
+          this.profiler.cleanup();
         }
       });
       
@@ -241,10 +273,193 @@ export class Game {
     document.body.appendChild(this.debugMenuElement);
   }
 
+  createHelpMenu() {
+    this.helpMenuElement = document.createElement('div');
+    this.helpMenuElement.style.position = 'fixed';
+    this.helpMenuElement.style.top = '50%';
+    this.helpMenuElement.style.left = '50%';
+    this.helpMenuElement.style.transform = 'translate(-50%, -50%)';
+    this.helpMenuElement.style.padding = '20px';
+    this.helpMenuElement.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+    this.helpMenuElement.style.color = '#fff';
+    this.helpMenuElement.style.fontFamily = 'monospace';
+    this.helpMenuElement.style.fontSize = '14px';
+    this.helpMenuElement.style.zIndex = '10002';
+    this.helpMenuElement.style.borderRadius = '10px';
+    this.helpMenuElement.style.border = '2px solid #555';
+    this.helpMenuElement.style.maxWidth = '600px';
+    this.helpMenuElement.style.maxHeight = '80vh';
+    this.helpMenuElement.style.overflow = 'auto';
+    this.helpMenuElement.style.display = 'none'; // start hidden
+    this.helpMenuElement.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.8)';
+    
+    this.helpMenuElement.innerHTML = `
+      <div style="position: relative;">
+        <button id="helpCloseBtn" style="position: absolute; top: -10px; right: -10px; background: #f44336; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; z-index: 10003;">×</button>
+        <div style="text-align: center; margin-bottom: 15px;">
+          <h2 style="color: #4CAF50; margin: 0 0 5px 0;">🎮 Voxel Engine Controls</h2>
+          <p style="margin: 0; color: #aaa; font-size: 12px;">Press H or ESC to toggle this help menu</p>
+        </div>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div>
+          <h3 style="color: #FFA726; margin: 0 0 10px 0; border-bottom: 1px solid #555; padding-bottom: 5px;">🔧 Debug & Info</h3>
+          <div style="line-height: 1.6;">
+            <div><span style="color: #64B5F6; font-weight: bold;">F3</span> - Toggle debug overlay</div>
+            <div><span style="color: #64B5F6; font-weight: bold;">H</span> - Toggle this help menu</div>
+          </div>
+          
+          <h3 style="color: #FFA726; margin: 15px 0 10px 0; border-bottom: 1px solid #555; padding-bottom: 5px;">🌍 World Controls</h3>
+          <div style="line-height: 1.6;">
+            <div><span style="color: #64B5F6; font-weight: bold;">F1</span> - Toggle terrain generator</div>
+            <div><span style="color: #64B5F6; font-weight: bold;">F4</span> - Rebuild world with debugger settings</div>
+            <div><span style="color: #64B5F6; font-weight: bold;">F5</span> - Toggle water shader</div>
+            <div><span style="color: #64B5F6; font-weight: bold;">F6</span> - Toggle chunk rendering</div>
+          </div>
+        </div>
+        
+        <div>
+          <h3 style="color: #FFA726; margin: 0 0 10px 0; border-bottom: 1px solid #555; padding-bottom: 5px;">📊 Profiler Controls</h3>
+          <div style="line-height: 1.6;">
+            <div><span style="color: #64B5F6; font-weight: bold;">F8</span> - Toggle profiler recording</div>
+            <div><span style="color: #64B5F6; font-weight: bold;">F9</span> - Capture WebGL frame</div>
+            <div><span style="color: #64B5F6; font-weight: bold;">F10</span> - Set performance baseline</div>
+            <div><span style="color: #64B5F6; font-weight: bold;">F11</span> - Generate performance report</div>
+            <div><span style="color: #64B5F6; font-weight: bold;">F12</span> - Export profiler data</div>
+          </div>
+          
+          <h3 style="color: #FFA726; margin: 15px 0 10px 0; border-bottom: 1px solid #555; padding-bottom: 5px;">🕹️ Movement</h3>
+          <div style="line-height: 1.6;">
+            <div><span style="color: #64B5F6; font-weight: bold;">WASD</span> - Move around</div>
+            <div><span style="color: #64B5F6; font-weight: bold;">Mouse</span> - Look around</div>
+            <div><span style="color: #64B5F6; font-weight: bold;">Space</span> - Move up</div>
+            <div><span style="color: #64B5F6; font-weight: bold;">Shift</span> - Move down</div>
+          </div>
+        </div>
+      </div>
+      
+      <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #555; text-align: center;">
+        <h3 style="color: #FFA726; margin: 0 0 10px 0;">📈 Performance Monitoring</h3>
+        <div style="font-size: 12px; color: #aaa; line-height: 1.5;">
+          <p style="margin: 5px 0;">• <strong>Top-left panels:</strong> Real-time FPS, frame time, and memory usage</p>
+          <p style="margin: 5px 0;">• <strong>Top-right GUI:</strong> Runtime profiler controls and performance thresholds</p>
+          <p style="margin: 5px 0;">• <strong>Performance alerts:</strong> Automatic notifications appear on the right side</p>
+          <p style="margin: 5px 0;">• <strong>Debug overlay (F3):</strong> Detailed chunk, rendering, and worker statistics</p>
+        </div>
+      </div>
+      
+      <div style="text-align: center; margin-top: 15px; padding-top: 10px; border-top: 1px solid #555;">
+        <span style="color: #81C784; font-size: 12px;">✨ Tip: Move around to see dynamic chunk loading in action! ✨</span>
+      </div>
+      </div>
+    `;
+    
+    document.body.appendChild(this.helpMenuElement);
+    
+    // Add close button functionality
+    this.helpMenuElement.querySelector('#helpCloseBtn').addEventListener('click', () => {
+      this.toggleHelpMenu();
+    });
+  }
+
+  createHelpHint() {
+    const helpHint = document.createElement('div');
+    helpHint.style.position = 'fixed';
+    helpHint.style.bottom = '20px';
+    helpHint.style.left = '20px';
+    helpHint.style.padding = '8px 12px';
+    helpHint.style.backgroundColor = 'rgba(76, 175, 80, 0.9)';
+    helpHint.style.color = '#fff';
+    helpHint.style.fontFamily = 'monospace';
+    helpHint.style.fontSize = '12px';
+    helpHint.style.borderRadius = '5px';
+    helpHint.style.zIndex = '10001';
+    helpHint.style.border = '1px solid rgba(255, 255, 255, 0.3)';
+    helpHint.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
+    helpHint.style.cursor = 'pointer';
+    helpHint.style.transition = 'all 0.2s ease';
+    helpHint.innerHTML = '❓ Press <strong>H</strong> for help';
+    
+    // Add hover effect
+    helpHint.addEventListener('mouseenter', () => {
+      helpHint.style.backgroundColor = 'rgba(76, 175, 80, 1)';
+      helpHint.style.transform = 'scale(1.05)';
+    });
+    
+    helpHint.addEventListener('mouseleave', () => {
+      helpHint.style.backgroundColor = 'rgba(76, 175, 80, 0.9)';
+      helpHint.style.transform = 'scale(1)';
+    });
+    
+    // Click to open help
+    helpHint.addEventListener('click', () => {
+      this.toggleHelpMenu();
+    });
+    
+    document.body.appendChild(helpHint);
+  }
+
+  showWelcomeMessage() {
+    const welcomeMessage = document.createElement('div');
+    welcomeMessage.style.position = 'fixed';
+    welcomeMessage.style.top = '50%';
+    welcomeMessage.style.left = '50%';
+    welcomeMessage.style.transform = 'translate(-50%, -50%)';
+    welcomeMessage.style.padding = '20px';
+    welcomeMessage.style.backgroundColor = 'rgba(76, 175, 80, 0.95)';
+    welcomeMessage.style.color = 'white';
+    welcomeMessage.style.fontFamily = 'monospace';
+    welcomeMessage.style.fontSize = '16px';
+    welcomeMessage.style.borderRadius = '10px';
+    welcomeMessage.style.zIndex = '10003';
+    welcomeMessage.style.textAlign = 'center';
+    welcomeMessage.style.border = '2px solid rgba(255, 255, 255, 0.3)';
+    welcomeMessage.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.8)';
+    welcomeMessage.style.animation = 'fadeInOut 4s ease-in-out forwards';
+    
+    welcomeMessage.innerHTML = `
+      <div>
+        <h3 style="margin: 0 0 10px 0; color: white;">🎮 Welcome to Voxel Engine!</h3>
+        <p style="margin: 0 0 10px 0; font-size: 14px;">Press <strong>H</strong> anytime for keyboard controls</p>
+        <p style="margin: 0; font-size: 12px; opacity: 0.8;">This message will disappear in a few seconds...</p>
+      </div>
+    `;
+    
+    // Add CSS animation keyframes if not already added
+    if (!document.getElementById('welcomeAnimationStyle')) {
+      const style = document.createElement('style');
+      style.id = 'welcomeAnimationStyle';
+      style.textContent = `
+        @keyframes fadeInOut {
+          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+          20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+          80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    document.body.appendChild(welcomeMessage);
+    
+    // Remove the message after animation completes
+    setTimeout(() => {
+      if (welcomeMessage.parentNode) {
+        welcomeMessage.parentNode.removeChild(welcomeMessage);
+      }
+    }, 4000);
+  }
+
   // TOGGLE DEBUG MENU // <-- ADDED
   toggleDebugMenu() {
     this.debugMenuVisible = !this.debugMenuVisible;
     this.debugMenuElement.style.display = this.debugMenuVisible ? 'block' : 'none';
+  }
+
+  // TOGGLE HELP MENU
+  toggleHelpMenu() {
+    this.helpMenuVisible = !this.helpMenuVisible;
+    this.helpMenuElement.style.display = this.helpMenuVisible ? 'block' : 'none';
   }
 
   // Toggle between water shader implementations
@@ -317,16 +532,6 @@ export class Game {
   updateDebugInfo() {
     if (!this.debugMenuVisible) return;  // Only update if visible
     
-    // Get renderer info if available
-    let calls = 0, triangles = 0, points = 0, lines = 0;
-    if (this.renderManager && this.renderManager.renderer) {
-      const renderer = this.renderManager.renderer;
-      calls = renderer.info.render.calls;
-      triangles = renderer.info.render.triangles;
-      points = renderer.info.render.points;
-      lines = renderer.info.render.lines;
-    }
-    
     // Get the active water shader type
     const waterShaderType = this.voxelWorld?.meshBuilder?.useAdvancedWaterShader ? 'Advanced' : 'Basic';
     
@@ -358,43 +563,9 @@ export class Game {
     const camY = Math.round(this.camera?.position.y || 0);
     const camZ = Math.round(this.camera?.position.z || 0);
 
-    // Get performance metrics
-    let chunkGenAvg = 0, chunkGenMax = 0, chunkGenMin = 0, chunkGenCount = 0;
-    if (this.voxelWorld?.generationStats && this.voxelWorld.generationStats.totalChunks > 0) {
-      chunkGenCount = this.voxelWorld.generationStats.totalChunks;
-      chunkGenAvg = (this.voxelWorld.generationStats.totalTime / chunkGenCount).toFixed(2);
-      chunkGenMax = this.voxelWorld.generationStats.maxTime.toFixed(2);
-      chunkGenMin = this.voxelWorld.generationStats.minTime.toFixed(2);
-    }
-
-    let buildAvg = 0, buildMax = 0, buildMin = 0, buildCount = 0, buildLast = 0;
-    let workerTime = 0, mainThreadTime = 0, lastWorkerTime = 0, lastMainThreadTime = 0;
-    if (this.voxelWorld?.buildStats && this.voxelWorld.buildStats.totalMeshes > 0) {
-      buildCount = this.voxelWorld.buildStats.totalMeshes;
-      buildAvg = (this.voxelWorld.buildStats.totalTime / buildCount).toFixed(2);
-      buildMax = this.voxelWorld.buildStats.maxTime.toFixed(2);
-      buildMin = this.voxelWorld.buildStats.minTime.toFixed(2);
-      buildLast = this.voxelWorld.buildStats.lastTime.toFixed(2);
-      
-      // Get worker vs main thread times
-      workerTime = this.voxelWorld.buildStats.workerTime || 0;
-      mainThreadTime = this.voxelWorld.buildStats.mainThreadTime || 0;
-      lastWorkerTime = this.voxelWorld.buildStats.lastWorkerTime || 0;
-      lastMainThreadTime = this.voxelWorld.buildStats.lastMainThreadTime || 0;
-      
-      const workerAvg = buildCount > 0 ? (workerTime / buildCount).toFixed(2) : 0;
-      const mainAvg = buildCount > 0 ? (mainThreadTime / buildCount).toFixed(2) : 0;
-      
-      // Store for display
-      workerTime = workerAvg;
-      mainThreadTime = mainAvg;
-    }
-
-    // Update text (you can add more info as needed)
+    // Update text with only debug info (performance metrics moved to profiler)
     this.debugMenuElement.innerHTML = `
       <strong>DEBUG INFO</strong><br/>
-      Draw Calls: ${calls}<br/>
-      Triangles: ${triangles}<br/>
       Position: ${camX}, ${camY}, ${camZ}<br/>
       Water Shader: ${waterShaderType}<br/>
       Terrain Type: ${terrainType}<br/>
@@ -404,14 +575,7 @@ export class Game {
       Dynamic Loading: ${dynamicLoading}<br/>
       Workers: ${workerCount} threads<br/>
       Chunks Processing: ${chunksGenerating} generating / ${chunksQueued} queued<br/>
-      <strong>Performance (ms):</strong><br/>
-      Generation: avg=${chunkGenAvg} min=${chunkGenMin} max=${chunkGenMax} (${chunkGenCount})<br/>
-      Mesh Build: avg=${buildAvg} min=${buildMin} max=${buildMax} last=${buildLast} (${buildCount})<br/>
-      Worker/Main: worker=${workerTime} main=${mainThreadTime} last=${lastWorkerTime}/${lastMainThreadTime}<br/>
-      <small>Press F3 to hide/show debug</small>
-      <small>Press F5 to toggle water shader</small>
-      <small>Press F6 to toggle chunk rendering</small>
-      <small>Press F7 to toggle terrain generator</small>
+      <small>Press <strong>H</strong> for controls help</small>
     `;
   }
   
@@ -472,9 +636,13 @@ export class Game {
   }
 
   animate = () => {
-    stats.begin();
+    // Begin profiling
+    this.profiler.begin();
 
     const delta = this.clock.getDelta();
+
+    // Begin update timing
+    this.profiler.beginUpdate();
 
     if (this.inputHandler) {
       this.inputHandler.update(delta);
@@ -531,14 +699,29 @@ export class Game {
       }
     }
     
-    if (this.renderManager) {
-      this.renderManager.render();
-    }
-    
     // Update debug info
     this.updateDebugInfo();
 
-    stats.end();
+    // End update timing
+    this.profiler.endUpdate();
+    
+    if (this.renderManager) {
+      // Begin render timing
+      this.profiler.beginRender();
+      
+      // Reset renderer info before rendering to get accurate counts
+      this.renderManager.renderer.info.reset();
+      this.renderManager.render();
+      
+      // End render timing
+      this.profiler.endRender();
+      
+      // Add renderer metrics to profiler after rendering
+      this.profiler.addRendererMetrics(this.renderManager.renderer);
+    }
+
+    // End profiling
+    this.profiler.end();
     requestAnimationFrame(this.animate);
   };
 };

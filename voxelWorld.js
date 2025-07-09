@@ -10,8 +10,9 @@ import { TerrainGeneratorFactory, TERRAIN_TYPE, PERLIN_BLOCK, DENSITY_BLOCK } fr
 import { ChunkGenerationManager } from './workers/chunkManager.js';
 
 export class VoxelWorld {
-  constructor(scene, textureManager, terrainType = TERRAIN_TYPE.PERLIN) {
+  constructor(scene, textureManager, terrainType = TERRAIN_TYPE.PERLIN, profiler = null) {
     this.scene = scene;
+    this.profiler = profiler;
     
     // Create components
     this.blockRegistry = new BlockRegistry(textureManager);
@@ -51,6 +52,19 @@ export class VoxelWorld {
       totalBuilds: 0,
       workerTime: 0,
       mainThreadTime: 0
+    };
+    
+    // Build statistics for mesh building
+    this.buildStats = {
+      totalMeshes: 0,
+      totalTime: 0,
+      maxTime: 0,
+      minTime: Number.MAX_SAFE_INTEGER,
+      lastTime: 0,
+      workerTime: 0,
+      mainThreadTime: 0,
+      lastWorkerTime: 0,
+      lastMainThreadTime: 0
     };
     
     // Track chunks being generated/built
@@ -105,6 +119,19 @@ export class VoxelWorld {
       totalBuilds: 0,
       workerTime: 0,
       mainThreadTime: 0
+    };
+    
+    // Reset build statistics
+    this.buildStats = {
+      totalMeshes: 0,
+      totalTime: 0,
+      maxTime: 0,
+      minTime: Number.MAX_SAFE_INTEGER,
+      lastTime: 0,
+      workerTime: 0,
+      mainThreadTime: 0,
+      lastWorkerTime: 0,
+      lastMainThreadTime: 0
     };
     
     // Initialize the workers again
@@ -217,6 +244,10 @@ export class VoxelWorld {
       };
     }
     if (generationTime) {
+      // Add to profiler if available
+      if (this.profiler) {
+        this.profiler.addChunkGenerationMetrics(generationTime);
+      }
       this.generationStats.totalChunks++;
       this.generationStats.totalTime += generationTime;
       this.generationStats.maxTime = Math.max(this.generationStats.maxTime, generationTime);
@@ -412,6 +443,9 @@ export class VoxelWorld {
       console.log('Texture manager loaded:', this.textureManager.isLoaded);
       console.log('Available textures:', Object.keys(this.textureManager.textureCache));
       
+      // Track mesh building time
+      const startTime = performance.now();
+      
       const meshes = this.meshBuilder.buildChunkMesh(
         chunkData, 
         this.scene, 
@@ -420,7 +454,24 @@ export class VoxelWorld {
         this.chunkManager.chunkSize
       );
       
-      console.log(`Created ${meshes ? meshes.length : 0} meshes for chunk ${chunkX},${chunkZ}`);
+      const endTime = performance.now();
+      const buildTime = endTime - startTime;
+      
+      // Update build statistics
+      this.buildStats.totalMeshes++;
+      this.buildStats.totalTime += buildTime;
+      this.buildStats.maxTime = Math.max(this.buildStats.maxTime, buildTime);
+      this.buildStats.minTime = Math.min(this.buildStats.minTime, buildTime);
+      this.buildStats.lastTime = buildTime;
+      this.buildStats.lastMainThreadTime = buildTime; // This is main thread time
+      this.buildStats.mainThreadTime += buildTime;
+      
+      // Add to profiler if available
+      if (this.profiler) {
+        this.profiler.addMeshBuildingMetrics(buildTime);
+      }
+      
+      console.log(`Created ${meshes ? meshes.length : 0} meshes for chunk ${chunkX},${chunkZ} in ${buildTime.toFixed(2)}ms`);
       
       // Remove from being built
       this.chunksBeingBuilt.delete(chunkKey);

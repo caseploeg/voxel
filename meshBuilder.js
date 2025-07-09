@@ -18,6 +18,12 @@ export class MeshBuilder {
     
     // Flag to use advanced water shader
     this.useAdvancedWaterShader = true;
+    
+    // Memory management tracking
+    this.disposalQueue = new Set(); // Track objects for disposal
+    
+    // Performance optimizations
+    this.directionCache = this._createDirectionsCache(); // Cache direction objects
   }
 
   // Build meshes from world data (legacy method)
@@ -93,11 +99,117 @@ export class MeshBuilder {
         if (scene) {
           scene.remove(mesh);
         }
+        this._disposeMeshSafely(mesh);
       });
     }
     this.chunkMeshes.clear();
     this.specialMeshes = {};
   }
+  
+  /**
+   * Safely dispose of mesh and its resources
+   */
+  _disposeMeshSafely(mesh) {
+    if (!mesh) return;
+    
+    // Dispose geometry
+    if (mesh.geometry && typeof mesh.geometry.dispose === 'function') {
+      mesh.geometry.dispose();
+    }
+    
+    // Dispose materials
+    if (mesh.material) {
+      if (Array.isArray(mesh.material)) {
+        mesh.material.forEach(material => {
+          if (material && typeof material.dispose === 'function') {
+            material.dispose();
+          }
+        });
+      } else if (typeof mesh.material.dispose === 'function') {
+        mesh.material.dispose();
+      }
+    }
+    
+    // Clear references
+    mesh.geometry = null;
+    mesh.material = null;
+  }
+  
+  
+  /**
+   * Create cached direction objects for reuse
+   */
+  _createDirectionsCache() {
+    return {
+      px: { // +X face
+        neighbor: [1, 0, 0],
+        positions: [
+          [1, 1, 1],
+          [1, 0, 1],
+          [1, 0, 0],
+          [1, 1, 0],
+        ],
+        normal: [1, 0, 0],
+        uv: [[0,1],[0,0],[1,0],[1,1]]
+      },
+      nx: { // -X face
+        neighbor: [-1, 0, 0],
+        positions: [
+          [0, 1, 0],
+          [0, 0, 0],
+          [0, 0, 1],
+          [0, 1, 1],
+        ],
+        normal: [-1, 0, 0],
+        uv: [[1,1],[1,0],[0,0],[0,1]]
+      },
+      py: { // +Y face
+        neighbor: [0, 1, 0],
+        positions: [
+          [0, 1, 1],
+          [1, 1, 1],
+          [1, 1, 0],
+          [0, 1, 0],
+        ],
+        normal: [0, 1, 0],
+        uv: [[0,1],[1,1],[1,0],[0,0]]
+      },
+      ny: { // -Y face
+        neighbor: [0, -1, 0],
+        positions: [
+          [0, 0, 0],
+          [1, 0, 0],
+          [1, 0, 1],
+          [0, 0, 1],
+        ],
+        normal: [0, -1, 0],
+        uv: [[0,0],[1,0],[1,1],[0,1]]
+      },
+      pz: { // +Z face
+        neighbor: [0, 0, 1],
+        positions: [
+          [1, 1, 1],
+          [0, 1, 1],
+          [0, 0, 1],
+          [1, 0, 1],
+        ],
+        normal: [0, 0, 1],
+        uv: [[1,1],[0,1],[0,0],[1,0]]
+      },
+      nz: { // -Z face
+        neighbor: [0, 0, -1],
+        positions: [
+          [0, 1, 0],
+          [1, 1, 0],
+          [1, 0, 0],
+          [0, 0, 0],
+        ],
+        normal: [0, 0, -1],
+        uv: [[0,1],[1,1],[1,0],[0,0]]
+      }
+    };
+  }
+  
   
   // Public method to remove all chunk meshes (used when switching terrain generators)
   removeAllChunkMeshes(scene) {
@@ -137,8 +249,14 @@ export class MeshBuilder {
         if (scene) {
           scene.remove(mesh);
         }
+        this._disposeMeshSafely(mesh);
       });
       this.chunkMeshes.delete(key);
+      
+      // Clean up special meshes
+      if (this.specialMeshes[key]) {
+        delete this.specialMeshes[key];
+      }
     }
   }
   
@@ -157,8 +275,16 @@ export class MeshBuilder {
       
       if (dx > viewDistance || dz > viewDistance) {
         // This chunk is now out of range, remove its meshes
-        meshes.forEach(mesh => scene.remove(mesh));
+        meshes.forEach(mesh => {
+          scene.remove(mesh);
+          this._disposeMeshSafely(mesh);
+        });
         this.chunkMeshes.delete(key);
+        
+        // Clean up special meshes
+        if (this.specialMeshes[key]) {
+          delete this.specialMeshes[key];
+        }
       }
     }
     
@@ -179,7 +305,7 @@ export class MeshBuilder {
   // Process blocks for a specific chunk
   _processChunkBlocks(worldData, collections, offsetX, offsetZ) {
     // Offsets for the 6 directions
-    const directions = this._getDirections();
+    const directions = this.directionCache;
     
     // Process all blocks in this chunk
     for (let key in worldData.worldData) {
@@ -480,75 +606,8 @@ export class MeshBuilder {
   }
   
   _processBlocks(worldData, collections) {
-    // Offsets for the 6 directions
-    const directions = {
-      px: { // +X face
-        neighbor: [1, 0, 0],
-        positions: [
-          [1, 1, 1],
-          [1, 0, 1],
-          [1, 0, 0],
-          [1, 1, 0],
-        ],
-        normal: [1, 0, 0],
-        uv: [[0,1],[0,0],[1,0],[1,1]]
-      },
-      nx: { // -X face
-        neighbor: [-1, 0, 0],
-        positions: [
-          [0, 1, 0],
-          [0, 0, 0],
-          [0, 0, 1],
-          [0, 1, 1],
-        ],
-        normal: [-1, 0, 0],
-        uv: [[1,1],[1,0],[0,0],[0,1]]
-      },
-      py: { // +Y face
-        neighbor: [0, 1, 0],
-        positions: [
-          [0, 1, 1],
-          [1, 1, 1],
-          [1, 1, 0],
-          [0, 1, 0],
-        ],
-        normal: [0, 1, 0],
-        uv: [[0,1],[1,1],[1,0],[0,0]]
-      },
-      ny: { // -Y face
-        neighbor: [0, -1, 0],
-        positions: [
-          [0, 0, 0],
-          [1, 0, 0],
-          [1, 0, 1],
-          [0, 0, 1],
-        ],
-        normal: [0, -1, 0],
-        uv: [[0,0],[1,0],[1,1],[0,1]]
-      },
-      pz: { // +Z face
-        neighbor: [0, 0, 1],
-        positions: [
-          [1, 1, 1],
-          [0, 1, 1],
-          [0, 0, 1],
-          [1, 0, 1],
-        ],
-        normal: [0, 0, 1],
-        uv: [[1,1],[0,1],[0,0],[1,0]]
-      },
-      nz: { // -Z face
-        neighbor: [0, 0, -1],
-        positions: [
-          [0, 1, 0],
-          [1, 1, 0],
-          [1, 0, 0],
-          [0, 0, 0],
-        ],
-        normal: [0, 0, -1],
-        uv: [[0,1],[1,1],[1,0],[0,0]]
-      }
-    };
+    // Use cached directions for better performance
+    const directions = this.directionCache;
     
     // Process all blocks
     for (let key in worldData.worldData) {
