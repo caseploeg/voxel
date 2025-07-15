@@ -3,65 +3,178 @@
 import { BlockType } from './blockRegistry.js';
 
 export class WorldData {
-  constructor(blockRegistry) {
+  constructor(blockRegistry, chunkSize = 16, textureManager = null) {
     this.blockRegistry = blockRegistry;
-    this.worldData = {};  // Storage for block data
+    this.textureManager = textureManager;
+    this.chunkSize = chunkSize;
+    this.worldHeight = 64; // Y range: 0-63
+    
+    // Replace string-keyed object with typed array
+    // Array size: chunkSize * worldHeight * chunkSize
+    this.worldData = new Uint16Array(chunkSize * this.worldHeight * chunkSize);
+    
+    // Encoding maps for block data
+    this.blockTypeMap = {
+      [BlockType.STANDARD]: 0,
+      [BlockType.WATER]: 1,
+      [BlockType.MULTI_SIDED]: 2,
+      [BlockType.CROSS]: 3,
+      [BlockType.TINTED]: 4
+    };
+    
+    this.reverseBlockTypeMap = {
+      0: BlockType.STANDARD,
+      1: BlockType.WATER,
+      2: BlockType.MULTI_SIDED,
+      3: BlockType.CROSS,
+      4: BlockType.TINTED
+    };
+    
+    // Texture/block name registry for encoding
+    this.textureRegistry = new Map();
+    this.reverseTextureRegistry = new Map();
+    this.nextTextureId = 1; // 0 reserved for "no texture"
+  }
+  
+  // Convert 3D coordinates to 1D array index
+  coordinateToIndex(x, y, z) {
+    if (x < 0 || x >= this.chunkSize || y < 0 || y >= this.worldHeight || z < 0 || z >= this.chunkSize) {
+      return -1; // Out of bounds
+    }
+    return x + y * this.chunkSize + z * this.chunkSize * this.worldHeight;
+  }
+  
+  // Convert 1D array index back to 3D coordinates
+  indexToCoordinate(index) {
+    const z = Math.floor(index / (this.chunkSize * this.worldHeight));
+    const remainder = index % (this.chunkSize * this.worldHeight);
+    const y = Math.floor(remainder / this.chunkSize);
+    const x = remainder % this.chunkSize;
+    return { x, y, z };
+  }
+  
+  // Get or create texture/block name ID
+  getTextureId(textureName) {
+    if (!textureName) return 0;
+    
+    if (this.textureRegistry.has(textureName)) {
+      return this.textureRegistry.get(textureName);
+    }
+    
+    const id = this.nextTextureId++;
+    this.textureRegistry.set(textureName, id);
+    this.reverseTextureRegistry.set(id, textureName);
+    return id;
+  }
+  
+  // Get texture name from ID
+  getTextureName(id) {
+    if (id === 0) return null;
+    return this.reverseTextureRegistry.get(id) || null;
+  }
+  
+  // Encode block data into a single 16-bit value
+  // Bits 0-2: Block type (0-7)
+  // Bits 3-15: Texture/block name ID (0-8191)
+  encodeBlockData(blockType, textureName) {
+    const typeId = this.blockTypeMap[blockType] || 0;
+    const textureId = this.getTextureId(textureName);
+    return (textureId << 3) | typeId;
+  }
+  
+  // Decode block data from 16-bit value
+  decodeBlockData(encoded) {
+    if (encoded === 0) return null;
+    
+    const typeId = encoded & 0b111; // Extract bits 0-2
+    const textureId = encoded >> 3; // Extract bits 3-15
+    
+    const blockType = this.reverseBlockTypeMap[typeId];
+    const textureName = this.getTextureName(textureId);
+    
+    return { blockType, textureName };
   }
 
   setBlock(x, y, z, blockType, blockName) {
+    const index = this.coordinateToIndex(x, y, z);
+    if (index === -1) return; // Out of bounds
+    
     if (!blockType) {
       blockType = BlockType.STANDARD;
     }
 
-    const blockData = { blockType };
+    let textureName = null;
     
     if (blockType === BlockType.STANDARD) {
       // If no specific texture, pick a random one
-      blockData.textureType = blockName
+      textureName = blockName
         ? blockName
-        : this.blockRegistry.getRandomValidTexture();
+        : this.blockRegistry.getRandomValidTexture(this.textureManager);
     } 
     else if (blockType === BlockType.MULTI_SIDED) {
       if (!blockName || !this.blockRegistry.isMultiSidedBlock(blockName)) {
-        blockData.blockType = BlockType.STANDARD;
-        blockData.textureType = this.blockRegistry.getRandomValidTexture();
+        blockType = BlockType.STANDARD;
+        textureName = this.blockRegistry.getRandomValidTexture(this.textureManager);
       } else {
-        blockData.blockName = blockName;
+        textureName = blockName;
       }
     }
     else if (blockType === BlockType.CROSS) {
-      blockData.textureType = blockName || 'poppy'; 
+      textureName = blockName || 'poppy';
+    }
+    else if (blockType === BlockType.WATER) {
+      textureName = 'water';
     }
 
-    this.worldData[`${x},${y},${z}`] = blockData;
+    this.worldData[index] = this.encodeBlockData(blockType, textureName);
   }
   
   setNamedBlock(x, y, z, blockName) {
     if (this.blockRegistry.isMultiSidedBlock(blockName)) {
       this.setBlock(x, y, z, BlockType.MULTI_SIDED, blockName);
     } else if (blockName === 'water') {
-      this.setBlock(x, y, z, BlockType.WATER);
+      this.setBlock(x, y, z, BlockType.WATER, blockName);
     } else {
-      const blockData = {
-        blockType: BlockType.STANDARD,
-        textureType: blockName
-      };
-      this.worldData[`${x},${y},${z}`] = blockData;
+      this.setBlock(x, y, z, BlockType.STANDARD, blockName);
     }
   }
 
   hasBlock(x, y, z) {
-    return !!this.worldData[`${x},${y},${z}`];
+    const index = this.coordinateToIndex(x, y, z);
+    if (index === -1) return false; // Out of bounds
+    return this.worldData[index] !== 0;
   }
   
   getBlock(x, y, z) {
-    return this.worldData[`${x},${y},${z}`] || null;
+    const index = this.coordinateToIndex(x, y, z);
+    if (index === -1) return null; // Out of bounds
+    
+    const encoded = this.worldData[index];
+    if (encoded === 0) return null;
+    
+    const decoded = this.decodeBlockData(encoded);
+    if (!decoded) return null;
+    
+    // Return object compatible with existing code
+    const result = {
+      blockType: decoded.blockType
+    };
+    
+    // Set textureType or blockName based on block type
+    if (decoded.blockType === BlockType.MULTI_SIDED) {
+      result.blockName = decoded.textureName;
+    } else {
+      result.textureType = decoded.textureName;
+    }
+    
+    return result;
   }
 }
 
 export class ChunkManager {
-  constructor(blockRegistry, chunkSize = 16) {
+  constructor(blockRegistry, chunkSize = 16, textureManager = null) {
     this.blockRegistry = blockRegistry;
+    this.textureManager = textureManager;
     this.chunks = new Map(); // key: "chunkX,chunkZ" -> WorldData instance
     this.chunkSize = chunkSize;
   }
@@ -86,7 +199,7 @@ export class ChunkManager {
   getChunk(chunkX, chunkZ) {
     const key = `${chunkX},${chunkZ}`;
     if (!this.chunks.has(key)) {
-      this.chunks.set(key, new WorldData(this.blockRegistry));
+      this.chunks.set(key, new WorldData(this.blockRegistry, this.chunkSize, this.textureManager));
     }
     return this.chunks.get(key);
   }

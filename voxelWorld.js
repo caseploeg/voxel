@@ -16,8 +16,8 @@ export class VoxelWorld {
     
     // Create components
     this.blockRegistry = new BlockRegistry(textureManager);
-    this.worldData = new WorldData(this.blockRegistry); // Legacy support
-    this.chunkManager = new ChunkManager(this.blockRegistry, 12); // Chunk-based storage
+    this.worldData = new WorldData(this.blockRegistry, 16, textureManager); // Legacy support
+    this.chunkManager = new ChunkManager(this.blockRegistry, 12, textureManager); // Chunk-based storage
     this.meshBuilder = new MeshBuilder(textureManager, this.blockRegistry);
     
     // Store meshes

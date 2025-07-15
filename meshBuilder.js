@@ -41,7 +41,7 @@ export class MeshBuilder {
   // Build a mesh for an individual chunk
   buildChunkMesh(worldData, scene, chunkX, chunkZ, chunkSize = 16) {
     console.log(`MeshBuilder: Building chunk ${chunkX},${chunkZ}`);
-    console.log('World data keys:', Object.keys(worldData.worldData || {}).length);
+    console.log('World data blocks:', worldData.worldData.filter(x => x !== 0).length);
     console.log('TextureManager loaded:', this.textureManager.isLoaded);
     
     // Create separate collections for different block types
@@ -308,50 +308,51 @@ export class MeshBuilder {
     const directions = this.directionCache;
     
     // Process all blocks in this chunk
-    for (let key in worldData.worldData) {
-      if (!worldData.worldData.hasOwnProperty(key)) continue;
-      const [localX, y, localZ] = key.split(',').map(Number);
-      const blockInfo = worldData.worldData[key];
-      if (!blockInfo) continue;
+    for (let localX = 0; localX < worldData.chunkSize; localX++) {
+      for (let y = 0; y < worldData.worldHeight; y++) {
+        for (let localZ = 0; localZ < worldData.chunkSize; localZ++) {
+          const blockInfo = worldData.getBlock(localX, y, localZ);
+          if (!blockInfo) continue;
 
-      // Calculate world coordinates
-      const x = localX + offsetX;
-      const z = localZ + offsetZ;
+          // Calculate world coordinates
+          const x = localX + offsetX;
+          const z = localZ + offsetZ;
 
-      const { blockType, textureType } = blockInfo;
-      const collection = collections[blockType];
-      
-      // Skip if we don't have a collection for this block type
-      if (!collection) continue;
+          const { blockType, textureType } = blockInfo;
+          const collection = collections[blockType];
+          
+          // Skip if we don't have a collection for this block type
+          if (!collection) continue;
 
-      // Handle cross blocks specially
-      if (blockType === BlockType.CROSS) {
-        this._buildCrossBlock(collection, x, y, z, textureType);
-        continue;
-      }
+          // Handle cross blocks specially
+          if (blockType === BlockType.CROSS) {
+            this._buildCrossBlock(collection, x, y, z, textureType);
+            continue;
+          }
 
-      // For each of the 6 directions, add the face if that neighbor doesn't exist
-      for (let dirKey in directions) {
-        const dir = directions[dirKey];
-        
-        // Calculate local coordinates of neighbor
-        const neighborLocalX = localX + dir.neighbor[0];
-        const neighborLocalY = y + dir.neighbor[1];
-        const neighborLocalZ = localZ + dir.neighbor[2];
-        
-        // Check if neighbor is outside chunk bounds
-        const isNeighborOutsideChunk = 
-          neighborLocalX < 0 || 
-          neighborLocalX >= 16 || 
-          neighborLocalZ < 0 || 
-          neighborLocalZ >= 16;
-        
-        let neighborInfo = null;
-        if (!isNeighborOutsideChunk) {
-          // Neighbor is within this chunk, check directly
-          const neighborKey = `${neighborLocalX},${neighborLocalY},${neighborLocalZ}`;
-          neighborInfo = worldData.worldData[neighborKey];
-        }
+          // For each of the 6 directions, add the face if that neighbor doesn't exist
+          for (let dirKey in directions) {
+            const dir = directions[dirKey];
+            
+            // Calculate local coordinates of neighbor
+            const neighborLocalX = localX + dir.neighbor[0];
+            const neighborLocalY = y + dir.neighbor[1];
+            const neighborLocalZ = localZ + dir.neighbor[2];
+            
+            // Check if neighbor is outside chunk bounds
+            const isNeighborOutsideChunk = 
+              neighborLocalX < 0 || 
+              neighborLocalX >= worldData.chunkSize || 
+              neighborLocalZ < 0 || 
+              neighborLocalZ >= worldData.chunkSize ||
+              neighborLocalY < 0 ||
+              neighborLocalY >= worldData.worldHeight;
+            
+            let neighborInfo = null;
+            if (!isNeighborOutsideChunk) {
+              // Neighbor is within this chunk, check directly
+              neighborInfo = worldData.getBlock(neighborLocalX, neighborLocalY, neighborLocalZ);
+            }
         
         const skipFace = neighborInfo && 
           !(this.blockRegistry.isSpecialBlock(blockType) || blockType === BlockType.MULTI_SIDED) && 
@@ -361,99 +362,101 @@ export class MeshBuilder {
           continue;
         }
 
-        // Get texture information based on block type
-        let atlasUV;
-        if (blockType === BlockType.STANDARD) {
-          // For standard blocks, use the assigned texture
-          atlasUV = this.textureManager.getTextureUV(textureType);
-        } 
-        else if (blockType === BlockType.MULTI_SIDED) {
-          // For multi-sided blocks, select texture based on the face direction
-          const blockName = blockInfo.blockName;
-          let faceName;
-          // Map direction key to face name
-          switch (dirKey) {
-            case 'py': faceName = Direction.TOP; break;
-            case 'ny': faceName = Direction.BOTTOM; break;
-            default: faceName = Direction.SIDES;
-          }
-          
-          // Get the texture for this face
-          const textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
-          atlasUV = this.textureManager.getTextureUV(textureName);
-          
-          if (!atlasUV) {
-            continue;
-          }
-        } 
-        else if (blockType === BlockType.WATER) {
-          // For water, we'll use a specific texture or a default one
-          // Later the shader will handle the special effects
-          atlasUV = this.textureManager.getTextureUV('acacia_door_bottom') || 
-                    this.textureManager.getTextureUV(Object.keys(this.textureManager.textureCache)[0]);
-        }
+            // Get texture information based on block type
+            let atlasUV;
+            if (blockType === BlockType.STANDARD) {
+              // For standard blocks, use the assigned texture
+              atlasUV = this.textureManager.getTextureUV(textureType);
+            } 
+            else if (blockType === BlockType.MULTI_SIDED) {
+              // For multi-sided blocks, select texture based on the face direction
+              const blockName = blockInfo.blockName;
+              let faceName;
+              // Map direction key to face name
+              switch (dirKey) {
+                case 'py': faceName = Direction.TOP; break;
+                case 'ny': faceName = Direction.BOTTOM; break;
+                default: faceName = Direction.SIDES;
+              }
+              
+              // Get the texture for this face
+              const textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
+              atlasUV = this.textureManager.getTextureUV(textureName);
+              
+              if (!atlasUV) {
+                continue;
+              }
+            } 
+            else if (blockType === BlockType.WATER) {
+              // For water, we'll use a specific texture or a default one
+              // Later the shader will handle the special effects
+              atlasUV = this.textureManager.getTextureUV('acacia_door_bottom') || 
+                        this.textureManager.getTextureUV(Object.keys(this.textureManager.textureCache)[0]);
+            }
+            
+            // Skip if no valid texture was found
+            if (!atlasUV) {
+              console.log(`Skipping face due to missing UV data for block type ${blockType}, texture ${textureType}`);
+              continue;
+            }
+
+            // Build the face positions
+            const facePositions = dir.positions.map(pos => [
+              pos[0] + x,
+              pos[1] + y,
+              pos[2] + z
+            ]);
+
+            // Each vertex has the same face normal
+            const faceNormals = new Array(4).fill(dir.normal);
+
+            // Apply the atlas offset + repeat to each corner's uv
+            const offsetX = atlasUV.offset.x;
+            const offsetY = atlasUV.offset.y;
+            const repeatX = atlasUV.repeat.x;
+            const repeatY = atlasUV.repeat.y;
+
+            const faceUVs = dir.uv.map(([u, v]) => {
+              return [
+                offsetX + u * repeatX,
+                offsetY + v * repeatY
+              ];
+            });
         
-        // Skip if no valid texture was found
-        if (!atlasUV) {
-          console.log(`Skipping face due to missing UV data for block type ${blockType}, texture ${textureType}`);
-          continue;
-        }
-
-        // Build the face positions
-        const facePositions = dir.positions.map(pos => [
-          pos[0] + x,
-          pos[1] + y,
-          pos[2] + z
-        ]);
-
-        // Each vertex has the same face normal
-        const faceNormals = new Array(4).fill(dir.normal);
-
-        // Apply the atlas offset + repeat to each corner's uv
-        const offsetX = atlasUV.offset.x;
-        const offsetY = atlasUV.offset.y;
-        const repeatX = atlasUV.repeat.x;
-        const repeatY = atlasUV.repeat.y;
-
-        const faceUVs = dir.uv.map(([u, v]) => {
-          return [
-            offsetX + u * repeatX,
-            offsetY + v * repeatY
-          ];
-        });
-        
-        // Determine if this texture should be tinted
-        let textureName = textureType;
-        if (blockType === BlockType.MULTI_SIDED) {
-          const blockName = blockInfo.blockName;
-          let faceName;
-          switch (dirKey) {
-            case 'py': faceName = Direction.TOP; break;
-            case 'ny': faceName = Direction.BOTTOM; break;
-            default: faceName = Direction.SIDES;
+            // Determine if this texture should be tinted
+            let textureName = textureType;
+            if (blockType === BlockType.MULTI_SIDED) {
+              const blockName = blockInfo.blockName;
+              let faceName;
+              switch (dirKey) {
+                case 'py': faceName = Direction.TOP; break;
+                case 'ny': faceName = Direction.BOTTOM; break;
+                default: faceName = Direction.SIDES;
+              }
+              textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
+            }
+            
+            // Check if this texture needs tinting
+            if (this.blockRegistry.isTintedTexture(textureName)) {
+              // Get the tint color for this texture
+              const tintColor = this.blockRegistry.getTintColor(textureName);
+              
+              // Ensure we have a collection for this tint color
+              const tintKey = `${tintColor.r},${tintColor.g},${tintColor.b}`;
+              if (!collections.tintedByTexture[tintKey]) {
+                collections.tintedByTexture[tintKey] = {
+                  color: tintColor,
+                  collection: this._createEmptyCollection()
+                };
+              }
+              
+              // Add to the tinted collection
+              this._pushFace(collections.tintedByTexture[tintKey].collection, facePositions, faceNormals, faceUVs);
+            } else {
+              // Add to the standard collection
+              this._pushFace(collection, facePositions, faceNormals, faceUVs);
+            }
           }
-          textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
-        }
-        
-        // Check if this texture needs tinting
-        if (this.blockRegistry.isTintedTexture(textureName)) {
-          // Get the tint color for this texture
-          const tintColor = this.blockRegistry.getTintColor(textureName);
-          
-          // Ensure we have a collection for this tint color
-          const tintKey = `${tintColor.r},${tintColor.g},${tintColor.b}`;
-          if (!collections.tintedByTexture[tintKey]) {
-            collections.tintedByTexture[tintKey] = {
-              color: tintColor,
-              collection: this._createEmptyCollection()
-            };
-          }
-          
-          // Add to the tinted collection
-          this._pushFace(collections.tintedByTexture[tintKey].collection, facePositions, faceNormals, faceUVs);
-        } else {
-          // Add to the standard collection
-          this._pushFace(collection, facePositions, faceNormals, faceUVs);
         }
       }
     }
@@ -610,137 +613,137 @@ export class MeshBuilder {
     const directions = this.directionCache;
     
     // Process all blocks
-    for (let key in worldData.worldData) {
-      if (!worldData.worldData.hasOwnProperty(key)) continue;
-      const [x, y, z] = key.split(',').map(Number);
-      const blockInfo = worldData.worldData[key];
-      if (!blockInfo) continue;
+    for (let x = 0; x < worldData.chunkSize; x++) {
+      for (let y = 0; y < worldData.worldHeight; y++) {
+        for (let z = 0; z < worldData.chunkSize; z++) {
+          const blockInfo = worldData.getBlock(x, y, z);
+          if (!blockInfo) continue;
 
-      const { blockType, textureType } = blockInfo;
-      const collection = collections[blockType];
-      
-      // Skip if we don't have a collection for this block type
-      if (!collection) continue;
-
-      // Handle cross blocks specially
-      if (blockType === BlockType.CROSS) {
-        this._buildCrossBlock(collection, x, y, z, textureType);
-        continue;
-      }
-
-      // For each of the 6 directions, add the face if that neighbor doesn't exist
-      for (let dirKey in directions) {
-        const dir = directions[dirKey];
-        const neighborKey = [
-          x + dir.neighbor[0],
-          y + dir.neighbor[1],
-          z + dir.neighbor[2]
-        ].join(',');
-
-        // Only add a face if there's *no* block in that neighbor
-        // Or if the current block is transparent (like water) and the neighbor is different
-        const neighborInfo = worldData.worldData[neighborKey];
-        const skipFace = neighborInfo && 
-          !(this.blockRegistry.isSpecialBlock(blockType) || blockType === BlockType.MULTI_SIDED) && 
-          neighborInfo.blockType !== blockType;
-            
-        if (skipFace) {
-          continue;
-        }
-
-        // Get texture information based on block type
-        let atlasUV;
-        if (blockType === BlockType.STANDARD) {
-          // For standard blocks, use the assigned texture
-          atlasUV = this.textureManager.getTextureUV(textureType);
-        } 
-        else if (blockType === BlockType.MULTI_SIDED) {
-          // For multi-sided blocks, select texture based on the face direction
-          const blockName = blockInfo.blockName;
-          let faceName;
-          // Map direction key to face name
-          switch (dirKey) {
-            case 'py': faceName = Direction.TOP; break;
-            case 'ny': faceName = Direction.BOTTOM; break;
-            default: faceName = Direction.SIDES;
-          }
+          const { blockType, textureType } = blockInfo;
+          const collection = collections[blockType];
           
-          // Get the texture for this face
-          const textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
-          atlasUV = this.textureManager.getTextureUV(textureName);
-          
-          if (!atlasUV) {
+          // Skip if we don't have a collection for this block type
+          if (!collection) continue;
+
+          // Handle cross blocks specially
+          if (blockType === BlockType.CROSS) {
+            this._buildCrossBlock(collection, x, y, z, textureType);
             continue;
           }
-        } 
-        else if (blockType === BlockType.WATER) {
-          // For water, we'll use a specific texture or a default one
-          // Later the shader will handle the special effects
-          atlasUV = this.textureManager.getTextureUV('acacia_door_bottom') || 
-                    this.textureManager.getTextureUV(Object.keys(this.textureManager.textureCache)[0]);
-        }
+
+          // For each of the 6 directions, add the face if that neighbor doesn't exist
+          for (let dirKey in directions) {
+            const dir = directions[dirKey];
+            const neighborX = x + dir.neighbor[0];
+            const neighborY = y + dir.neighbor[1];
+            const neighborZ = z + dir.neighbor[2];
+
+            // Only add a face if there's *no* block in that neighbor
+            // Or if the current block is transparent (like water) and the neighbor is different
+            const neighborInfo = worldData.getBlock(neighborX, neighborY, neighborZ);
+            const skipFace = neighborInfo && 
+              !(this.blockRegistry.isSpecialBlock(blockType) || blockType === BlockType.MULTI_SIDED) && 
+              neighborInfo.blockType !== blockType;
+                
+            if (skipFace) {
+              continue;
+            }
+
+            // Get texture information based on block type
+            let atlasUV;
+            if (blockType === BlockType.STANDARD) {
+              // For standard blocks, use the assigned texture
+              atlasUV = this.textureManager.getTextureUV(textureType);
+            } 
+            else if (blockType === BlockType.MULTI_SIDED) {
+              // For multi-sided blocks, select texture based on the face direction
+              const blockName = blockInfo.blockName;
+              let faceName;
+              // Map direction key to face name
+              switch (dirKey) {
+                case 'py': faceName = Direction.TOP; break;
+                case 'ny': faceName = Direction.BOTTOM; break;
+                default: faceName = Direction.SIDES;
+              }
+              
+              // Get the texture for this face
+              const textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
+              atlasUV = this.textureManager.getTextureUV(textureName);
+              
+              if (!atlasUV) {
+                continue;
+              }
+            } 
+            else if (blockType === BlockType.WATER) {
+              // For water, we'll use a specific texture or a default one
+              // Later the shader will handle the special effects
+              atlasUV = this.textureManager.getTextureUV('acacia_door_bottom') || 
+                        this.textureManager.getTextureUV(Object.keys(this.textureManager.textureCache)[0]);
+            }
+            
+            // Skip if no valid texture was found
+            if (!atlasUV) {
+              console.log(`Skipping face due to missing UV data for block type ${blockType}, texture ${textureType}`);
+              continue;
+            }
+
+            // Build the face positions
+            const facePositions = dir.positions.map(pos => [
+              pos[0] + x,
+              pos[1] + y,
+              pos[2] + z
+            ]);
+
+            // Each vertex has the same face normal
+            const faceNormals = new Array(4).fill(dir.normal);
+
+            // Apply the atlas offset + repeat to each corner's uv
+            const offsetX = atlasUV.offset.x;
+            const offsetY = atlasUV.offset.y;
+            const repeatX = atlasUV.repeat.x;
+            const repeatY = atlasUV.repeat.y;
+
+            const faceUVs = dir.uv.map(([u, v]) => {
+              return [
+                offsetX + u * repeatX,
+                offsetY + v * repeatY
+              ];
+            });
         
-        // Skip if no valid texture was found
-        if (!atlasUV) {
-          console.log(`Skipping face due to missing UV data for block type ${blockType}, texture ${textureType}`);
-          continue;
-        }
-
-        // Build the face positions
-        const facePositions = dir.positions.map(pos => [
-          pos[0] + x,
-          pos[1] + y,
-          pos[2] + z
-        ]);
-
-        // Each vertex has the same face normal
-        const faceNormals = new Array(4).fill(dir.normal);
-
-        // Apply the atlas offset + repeat to each corner's uv
-        const offsetX = atlasUV.offset.x;
-        const offsetY = atlasUV.offset.y;
-        const repeatX = atlasUV.repeat.x;
-        const repeatY = atlasUV.repeat.y;
-
-        const faceUVs = dir.uv.map(([u, v]) => {
-          return [
-            offsetX + u * repeatX,
-            offsetY + v * repeatY
-          ];
-        });
-        
-        // Determine if this texture should be tinted
-        let textureName = textureType;
-        if (blockType === BlockType.MULTI_SIDED) {
-          const blockName = blockInfo.blockName;
-          let faceName;
-          switch (dirKey) {
-            case 'py': faceName = Direction.TOP; break;
-            case 'ny': faceName = Direction.BOTTOM; break;
-            default: faceName = Direction.SIDES;
+            // Determine if this texture should be tinted
+            let textureName = textureType;
+            if (blockType === BlockType.MULTI_SIDED) {
+              const blockName = blockInfo.blockName;
+              let faceName;
+              switch (dirKey) {
+                case 'py': faceName = Direction.TOP; break;
+                case 'ny': faceName = Direction.BOTTOM; break;
+                default: faceName = Direction.SIDES;
+              }
+              textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
+            }
+            
+            // Check if this texture needs tinting
+            if (this.blockRegistry.isTintedTexture(textureName)) {
+              // Get the tint color for this texture
+              const tintColor = this.blockRegistry.getTintColor(textureName);
+              
+              // Ensure we have a collection for this tint color
+              const tintKey = `${tintColor.r},${tintColor.g},${tintColor.b}`;
+              if (!collections.tintedByTexture[tintKey]) {
+                collections.tintedByTexture[tintKey] = {
+                  color: tintColor,
+                  collection: this._createEmptyCollection()
+                };
+              }
+              
+              // Add to the tinted collection
+              this._pushFace(collections.tintedByTexture[tintKey].collection, facePositions, faceNormals, faceUVs);
+            } else {
+              // Add to the standard collection
+              this._pushFace(collection, facePositions, faceNormals, faceUVs);
+            }
           }
-          textureName = this.blockRegistry.getTextureForFace(blockName, faceName);
-        }
-        
-        // Check if this texture needs tinting
-        if (this.blockRegistry.isTintedTexture(textureName)) {
-          // Get the tint color for this texture
-          const tintColor = this.blockRegistry.getTintColor(textureName);
-          
-          // Ensure we have a collection for this tint color
-          const tintKey = `${tintColor.r},${tintColor.g},${tintColor.b}`;
-          if (!collections.tintedByTexture[tintKey]) {
-            collections.tintedByTexture[tintKey] = {
-              color: tintColor,
-              collection: this._createEmptyCollection()
-            };
-          }
-          
-          // Add to the tinted collection
-          this._pushFace(collections.tintedByTexture[tintKey].collection, facePositions, faceNormals, faceUVs);
-        } else {
-          // Add to the standard collection
-          this._pushFace(collection, facePositions, faceNormals, faceUVs);
         }
       }
     }
