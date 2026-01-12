@@ -144,3 +144,165 @@
 - **Tool-Specific Strengths**: Use stats.js for frame timing, spector.js for draw calls, Chrome DevTools for memory, WebGL Insight for GPU bottlenecks
 - **Development Integration**: Ensure profilers run automatically during development and CI/CD processes
 - **Performance Budget**: Set performance budgets that are monitored by all profiling tools simultaneously
+
+---
+
+## 🔴 Critical Issues / Technical Debt
+
+### 1. TERRAIN_TYPE.DENSITY Crashes
+**File:** `terrainGenerator.js:7, 62-64`
+**Issue:** `AdvancedDensityTerrain` import is commented out, but the switch case still references it.
+**Impact:** Selecting DENSITY terrain type will crash with `ReferenceError`.
+```javascript
+// Line 7: Import is commented out
+//import { AdvancedDensityTerrain, BLOCK as DENSITY_BLOCK } from './improvedPerlin.js';
+
+// Line 62-64: But it's still used
+case TERRAIN_TYPE.DENSITY:
+  generator = new AdvancedDensityTerrain(seed); // CRASH!
+```
+**Fix:** Either uncomment the import or remove/disable the DENSITY case.
+
+### 2. DemoTerrain Generates Empty Chunks
+**File:** `demo.js:75-81`
+**Issue:** DemoTerrain only fills bedrock at y=0, the terrain layer logic is incomplete.
+```javascript
+for (let y = 0; y < maxHeight; y++) {
+  if (y === 0) {
+    chunk[x][z][y] = BLOCK.STONE; // Only bedrock
+  }
+  // Rest is air - no terrain!
+}
+```
+**Impact:** Demo terrain type produces nearly empty worlds.
+
+### 3. geometryWorker.js is a Stub
+**File:** `workers/geometryWorker.js`
+**Issue:** Only creates a hardcoded test cube, doesn't actually build chunk geometry.
+**Impact:** Worker-based geometry building is non-functional.
+
+---
+
+## 🟡 Dead Code / Unused Files
+
+### 1. batchManager.js - Not Used
+**File:** `batchManager.js` (313 lines)
+**Issue:** Complete module but never imported anywhere in the codebase.
+**Action:** Delete or integrate into the rendering pipeline.
+
+### 2. Duplicate Direction Cache
+**File:** `meshBuilder.js:142-211, 510-579`
+**Issue:** `_createDirectionsCache()` and `_getDirections()` are nearly identical.
+**Action:** Remove `_getDirections()`, use cached version only.
+
+### 3. Dead Code in chunkWorker.js
+**File:** `workers/chunkWorker.js:329-345`
+**Issue:** `getBlockType()` has unreachable code after `return 0;`
+```javascript
+function getBlockType(worldX, worldY, worldZ, surfaceHeight) {
+  return 0;  // Always returns here
+  if (!terrainGen) { // Never reached
+    return worldY < 5 ? 3 : 2;
+  }
+}
+```
+
+### 4. Commented Out Chunk Generation
+**File:** `workers/chunkWorker.js:78-115, 117-193`
+**Issue:** Multiple commented-out versions of `generateChunk` function.
+**Action:** Remove dead code.
+
+---
+
+## 🟡 Code Duplication
+
+### 1. Block Processing Duplication
+**Files:** `meshBuilder.js`
+- `_processBlocks()` (lines 611-750)
+- `_processChunkBlocks()` (lines 306-463)
+
+**Issue:** These methods are ~90% identical. Only difference is coordinate handling.
+**Action:** Extract shared logic into a helper method.
+
+### 2. Dual Storage Systems
+**Files:** `voxelWorld.js`, `worldData.js`
+**Issue:** Both `WorldData` and `ChunkManager` are used for "legacy support".
+```javascript
+// voxelWorld.js:19-20
+this.worldData = new WorldData(...);   // Legacy
+this.chunkManager = new ChunkManager(...); // Modern
+```
+**Action:** Migrate fully to ChunkManager, remove WorldData.
+
+---
+
+## 🟡 Debug/Development Leftovers
+
+### 1. Excessive Console Logging
+**Impact:** ~50+ console.log statements across the codebase.
+**Files with most logs:**
+- `meshBuilder.js` (15+)
+- `voxelWorld.js` (10+)
+- `workers/chunkWorker.js` (5+)
+
+**Action:** Add DEBUG flag or use proper logging system.
+
+### 2. Hardcoded Debug Flags
+**File:** `workers/chunkManager.js:107`
+```javascript
+debug_more_poppies: true  // Hardcoded!
+```
+**Action:** Make configurable or remove.
+
+---
+
+## 🔵 Headless Mode Requirements
+
+### Components Needing Abstraction for CLI Benchmarks
+
+| Component | Browser Dependency | Abstraction Needed |
+|-----------|-------------------|-------------------|
+| `main.js` | DOM events, window | Separate entry point |
+| `renderManager.js` | WebGLRenderer | Mock renderer |
+| `inputHandler.js` | PointerLockControls | Remove/mock |
+| `profiler.js` | lil-gui, DOM | Console output |
+| `textureManager.js` | Image, Canvas | Node.js loader |
+| `workers/` | Web Workers | Node.js worker_threads |
+
+### Worker Thread Browser Dependency
+**File:** `workers/chunkManager.js`
+**Issue:** Uses `navigator.hardwareConcurrency` which doesn't exist in Node.js.
+**Fix:** Add fallback: `globalThis.navigator?.hardwareConcurrency || 4`
+
+---
+
+## 📋 Recommended Priority Order
+
+1. **Fix DENSITY terrain crash** - Prevents runtime errors
+2. **Remove dead code** - Reduces confusion
+3. **Fix DemoTerrain** - Makes demo mode functional
+4. **Add DEBUG flag for console.log** - Cleaner output
+5. **Consolidate WorldData/ChunkManager** - Simplify architecture
+6. **Implement headless mode abstractions** - Enable CLI benchmarking
+7. **Integrate BatchManager** - Performance improvement
+
+---
+
+## 🛠️ Utility Scripts
+
+Run these to analyze the codebase:
+
+```bash
+# Analyze codebase for issues
+node scripts/analyze-codebase.js
+
+# Validate terrain generation
+node scripts/validate-terrain.js
+
+# Check imports/exports
+node scripts/check-imports.js
+```
+
+---
+
+*Last updated: 2026-01-12*

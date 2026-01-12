@@ -2,6 +2,17 @@
 
 ## Build Commands
 - `npm run dev` - Start development server with Vite
+- `npm test` - Run test suite
+- `npm run analyze` - Analyze codebase for issues
+- `npm run validate:terrain` - Validate terrain generation
+- `npm run check:imports` - Check import/export integrity
+
+## Technical Debt & TODOs
+See [TODO.md](./TODO.md) for:
+- Critical bugs (DENSITY terrain crash, broken DemoTerrain)
+- Dead code inventory (batchManager.js unused, duplicate methods)
+- Code duplication issues
+- Headless mode requirements
 
 ## Code Style Guidelines
 

@@ -6,7 +6,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && gh-pages -d dist"
+    "deploy": "npm run build && gh-pages -d dist",
+    "analyze": "node scripts/analyze-codebase.js",
+    "validate:terrain": "node scripts/validate-terrain.js",
+    "check:imports": "node scripts/check-imports.js",
+    "test": "node scripts/test-runner.js"
   },
   "dependencies": {
     "lil-gui": "^0.20.0",
