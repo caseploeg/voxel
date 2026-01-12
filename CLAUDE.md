@@ -117,3 +117,183 @@
 - **Bottom-right Help**: Green help hint button
 - **Bottom-center Alerts**: Performance warning toasts (max 5, intelligently throttled)
 - **Press H**: Full help screen with all controls
+
+---
+
+## Headless Mode Implementation Plan
+
+### Overview
+Add a headless mode to enable CLI-based performance benchmarking without a browser/GUI. This allows automated testing, CI/CD integration, and reproducible performance measurements.
+
+### Architecture Design
+
+#### 1. Entry Points
+```
+main.js           → Browser entry (existing)
+headless.js       → Node.js CLI entry (new)
+```
+
+#### 2. Core Abstraction Layer
+Create an abstraction layer to separate engine logic from browser-specific APIs:
+
+```
+src/
+├── core/                    # Browser-agnostic core
+│   ├── Engine.js           # Main engine class (abstract)
+│   ├── WorldGenerator.js   # Terrain generation (reuse existing)
+│   ├── ChunkManager.js     # Chunk data management
+│   └── BenchmarkRunner.js  # Benchmark orchestration
+├── browser/                 # Browser-specific implementations
+│   ├── BrowserEngine.js    # extends Engine
+│   ├── BrowserRenderer.js  # Three.js WebGL
+│   └── BrowserWorkers.js   # Web Workers
+├── headless/                # Node.js implementations
+│   ├── HeadlessEngine.js   # extends Engine
+│   ├── HeadlessRenderer.js # Mock or headless-gl
+│   └── NodeWorkers.js      # worker_threads
+└── cli/
+    ├── benchmark.js        # CLI benchmark runner
+    └── commands/           # Subcommands
+```
+
+#### 3. Dependencies for Headless Mode
+```json
+{
+  "devDependencies": {
+    "headless-gl": "^6.0.0",     // WebGL in Node.js (optional)
+    "commander": "^12.0.0",       // CLI argument parsing
+    "ora": "^8.0.0"               // CLI spinners/progress
+  }
+}
+```
+
+#### 4. Benchmark Scenarios
+
+| Benchmark | Description | Metrics |
+|-----------|-------------|---------|
+| `chunk-gen` | Generate N chunks | Time per chunk, memory |
+| `mesh-build` | Build mesh for chunks | Vertices/sec, time |
+| `full-world` | Generate complete world | Total time, peak memory |
+| `streaming` | Simulate player movement | Chunks/sec loaded |
+| `render-sim` | Simulate render passes | Draw calls, triangles |
+
+#### 5. CLI Interface Design
+```bash
+# Run all benchmarks
+npm run benchmark
+
+# Specific benchmark with options
+npm run benchmark -- --scenario chunk-gen --chunks 100 --seed 12345
+
+# Output formats
+npm run benchmark -- --output json > results.json
+npm run benchmark -- --output table
+
+# Compare with baseline
+npm run benchmark -- --compare baseline.json
+
+# CI mode (exit code based on thresholds)
+npm run benchmark -- --ci --max-chunk-time 50ms
+```
+
+### Implementation Phases
+
+#### Phase 1: Core Abstraction
+- [ ] Create `src/core/Engine.js` base class
+- [ ] Extract terrain generation into standalone module
+- [ ] Create `BenchmarkRunner.js` for test orchestration
+- [ ] Abstract worker management interface
+
+#### Phase 2: Headless Implementation
+- [ ] Implement `HeadlessEngine.js`
+- [ ] Create Node.js worker thread wrapper
+- [ ] Implement mock renderer for metrics collection
+- [ ] Optional: headless-gl integration for GPU benchmarks
+
+#### Phase 3: CLI & Benchmarks
+- [ ] Create `cli/benchmark.js` entry point
+- [ ] Implement benchmark scenarios
+- [ ] Add JSON/table output formatters
+- [ ] Add baseline comparison feature
+
+#### Phase 4: CI Integration
+- [ ] Add `npm run benchmark` script
+- [ ] Create GitHub Actions workflow
+- [ ] Add performance regression detection
+- [ ] Generate benchmark reports
+
+### Key Files to Modify/Create
+
+#### New Files
+| File | Purpose |
+|------|---------|
+| `headless.js` | CLI entry point |
+| `src/core/Engine.js` | Abstract engine base |
+| `src/core/BenchmarkRunner.js` | Benchmark orchestration |
+| `src/headless/HeadlessEngine.js` | Node.js engine |
+| `src/headless/MockRenderer.js` | Metrics-only renderer |
+| `src/headless/NodeWorkerPool.js` | worker_threads pool |
+| `cli/benchmark.js` | CLI command handler |
+
+#### Files to Refactor
+| File | Changes Needed |
+|------|----------------|
+| `voxelWorld.js` | Extract core logic to Engine base |
+| `workers/chunkWorker.js` | Make isomorphic (browser/node) |
+| `terrainGenerator.js` | Already mostly portable |
+| `meshBuilder.js` | Add headless geometry generation |
+| `profiler.js` | Extract metrics collection from GUI |
+
+### Browser/Node Compatibility Matrix
+
+| Component | Browser | Node.js | Notes |
+|-----------|---------|---------|-------|
+| Terrain Gen | ✅ | ✅ | Pure JS, fully portable |
+| Noise Functions | ✅ | ✅ | noisejs works in both |
+| Chunk Storage | ✅ | ✅ | Uint16Array works in both |
+| Web Workers | ✅ | ❌ | Need worker_threads wrapper |
+| THREE.Scene | ✅ | ✅ | Works without rendering |
+| WebGLRenderer | ✅ | ⚠️ | Needs headless-gl |
+| DOM APIs | ✅ | ❌ | Must be abstracted |
+| Performance.now | ✅ | ✅ | Works in both |
+
+### Benchmark Output Format
+```json
+{
+  "meta": {
+    "version": "1.0.0",
+    "timestamp": "2026-01-12T...",
+    "platform": "linux",
+    "nodeVersion": "v20.x.x",
+    "seed": 12345
+  },
+  "results": {
+    "chunk-gen": {
+      "iterations": 100,
+      "totalMs": 523.4,
+      "avgMs": 5.234,
+      "minMs": 3.1,
+      "maxMs": 12.8,
+      "stdDev": 1.2,
+      "memoryPeakMB": 128.5
+    },
+    "mesh-build": {
+      "iterations": 100,
+      "verticesGenerated": 1250000,
+      "verticesPerSecond": 2890000,
+      "avgMs": 4.32
+    }
+  },
+  "summary": {
+    "passed": true,
+    "warnings": [],
+    "errors": []
+  }
+}
+```
+
+### Development Notes
+- Three.js can create Scene/Geometry without WebGL context
+- Focus on chunk generation and mesh building metrics first
+- GPU rendering benchmarks can be added later with headless-gl
+- Worker thread pool should match navigator.hardwareConcurrency pattern
