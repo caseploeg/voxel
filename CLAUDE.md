@@ -117,3 +117,26 @@
 - **Bottom-right Help**: Green help hint button
 - **Bottom-center Alerts**: Performance warning toasts (max 5, intelligently throttled)
 - **Press H**: Full help screen with all controls
+
+### Texture Pack System
+- **TexturePackManager** (`texturePackManager.js`): Manages multiple texture packs
+- **TextureManager Extensions**: Added `loadFromPack()` and `reloadDefaultPack()` for hot-swapping
+- **Available Packs**:
+  - `default`: Original Minecraft-style textures from PNG files
+  - `dev`: Simple colored/patterned textures generated via Canvas API
+- **UI Integration**: Dropdown in top-right Profiler GUI under "Texture Pack" folder
+- **Auto-Rerender**: Automatically rebuilds all chunk meshes when switching packs
+- **Dev Pack Textures**: Programmatically generated textures with patterns:
+  - `noise`: Random color variation (stone, dirt, sand, snow)
+  - `grass`: Green base with darker blade accents
+  - `grass_side`: Split texture with grass top and dirt bottom
+  - `dots`: Base color with scattered dots (gravel)
+  - `waves`: Blue with white wave lines (water)
+  - `flower`: Stem with petals and center (poppy)
+  - `lava`: Orange-red with flowing pattern and bright spots
+
+### Adding New Texture Packs
+1. Create a new `TexturePack` instance in `texturePackManager.js`
+2. Add textures using `pack.addTexture(name, canvasOrImage)`
+3. Register with `this.registerPack(pack)` in `_initializeBuiltInPacks()`
+4. Pack will automatically appear in the UI dropdown

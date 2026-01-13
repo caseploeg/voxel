@@ -8,6 +8,8 @@ export class TextureManager {
     this.atlasTexture = null;       // The combined texture atlas
     this.texturePaths = [];         // Paths to textures
     this.isLoaded = false;          // Loading state
+    this.currentPackName = 'default'; // Current texture pack name
+    this.onTexturesReloadedCallbacks = []; // Callbacks for when textures are reloaded
 
     // Configuration options with defaults
     this.options = {
@@ -241,5 +243,235 @@ export class TextureManager {
     
     console.log('Texture cache created:', Object.keys(textures));
     return textures;
+  }
+
+  /**
+   * Load textures from a TexturePack (canvas-based textures)
+   * @param {TexturePack} texturePack - The texture pack to load from
+   * @param {string[]} textureNames - Names of textures to load (or all if not specified)
+   * @return {Promise} Resolves when textures are loaded and atlas is created
+   */
+  async loadFromPack(texturePack, textureNames = null) {
+    const namesToLoad = textureNames || texturePack.getTextureNames();
+
+    // Convert canvas textures to image-like objects for atlas creation
+    const loadedImages = [];
+
+    for (const name of namesToLoad) {
+      const canvas = texturePack.getTexture(name);
+      if (canvas) {
+        // Create a fake URL for the atlas mapping
+        const fakeUrl = `pack://${texturePack.name}/${name}`;
+        loadedImages.push({
+          url: fakeUrl,
+          img: canvas,
+          name: name
+        });
+      }
+    }
+
+    // Merge with default textures that aren't in the pack
+    // This allows the dev pack to only override some textures
+    if (this.defaultTextureEntries) {
+      const packTextureNames = new Set(namesToLoad.filter(n => texturePack.hasTexture(n)));
+
+      for (const entry of this.defaultTextureEntries) {
+        const textureName = entry.path.split('/').pop().split('.')[0];
+        if (!packTextureNames.has(textureName)) {
+          // Load the default texture
+          try {
+            const img = await this._loadSingleImage(entry.url);
+            loadedImages.push({
+              url: entry.url,
+              img: img,
+              name: textureName
+            });
+          } catch (error) {
+            console.warn(`Failed to load default texture ${textureName}:`, error);
+          }
+        }
+      }
+    }
+
+    // Create the atlas from loaded images
+    const { canvas, atlasMapping } = this._createAtlasCanvasFromPack(loadedImages);
+
+    // Dispose of old atlas texture if it exists
+    if (this.atlasTexture) {
+      this.atlasTexture.dispose();
+    }
+
+    this.atlasTexture = this._createAtlasTexture(canvas);
+    this.atlasMapping = atlasMapping;
+    this.textureCache = this._createTextureMapFromPack(this.atlasTexture, this.atlasMapping, loadedImages);
+    this.currentPackName = texturePack.name;
+    this.isLoaded = true;
+
+    console.log(`Loaded texture pack: ${texturePack.name} with ${loadedImages.length} textures`);
+
+    // Notify callbacks
+    this._notifyTexturesReloaded();
+
+    return this;
+  }
+
+  /**
+   * Load a single image
+   * @param {string} url - URL to load
+   * @returns {Promise<HTMLImageElement>}
+   */
+  _loadSingleImage(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
+  /**
+   * Create atlas canvas from pack images (supports both canvas and image elements)
+   */
+  _createAtlasCanvasFromPack(loadedImages) {
+    const MAX_WIDTH = 8096;
+    const MAX_HEIGHT = 8096;
+    const tileSize = 64;
+    const tilesPerRow = Math.floor(MAX_WIDTH / tileSize);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.min(MAX_WIDTH, tilesPerRow * tileSize);
+    canvas.height = Math.min(MAX_HEIGHT, Math.ceil(loadedImages.length / tilesPerRow) * tileSize);
+
+    const ctx = canvas.getContext('2d');
+    const atlasMapping = {};
+
+    loadedImages.forEach(({ url, img, name }, index) => {
+      const row = Math.floor(index / tilesPerRow);
+      const col = index % tilesPerRow;
+
+      const x = col * tileSize;
+      const y = row * tileSize;
+
+      // Draw the image/canvas, scaling to fit the tile size if needed
+      ctx.drawImage(img, x, y, tileSize, tileSize);
+
+      // Store normalized UV coordinates
+      const u0 = x / canvas.width;
+      const v0 = y / canvas.height;
+      const u1 = (x + tileSize) / canvas.width;
+      const v1 = (y + tileSize) / canvas.height;
+
+      atlasMapping[url] = {
+        offset: { x: u0, y: v0 },
+        size: { x: (u1 - u0), y: (v1 - v0) },
+        name: name
+      };
+    });
+
+    return { canvas, atlasMapping };
+  }
+
+  /**
+   * Create texture map from pack atlas
+   */
+  _createTextureMapFromPack(atlasTexture, atlasMapping, loadedImages) {
+    const textures = {};
+
+    for (const { url, name } of loadedImages) {
+      const uv = atlasMapping[url];
+      if (!uv) continue;
+
+      const texture = atlasTexture.clone();
+      texture.offset.set(uv.offset.x, uv.offset.y);
+      texture.repeat.set(uv.size.x, uv.size.y);
+      texture.needsUpdate = true;
+
+      textures[name] = texture;
+      textures[name]._originalUrl = url;
+    }
+
+    console.log('Texture cache created from pack:', Object.keys(textures));
+    return textures;
+  }
+
+  /**
+   * Store default texture entries for fallback when using custom packs
+   * @param {Array<Object>} entries - Default texture entries
+   */
+  setDefaultTextureEntries(entries) {
+    this.defaultTextureEntries = entries;
+  }
+
+  /**
+   * Get current texture pack name
+   * @returns {string}
+   */
+  getCurrentPackName() {
+    return this.currentPackName;
+  }
+
+  /**
+   * Register a callback for when textures are reloaded
+   * @param {Function} callback - Function to call when textures reload
+   */
+  onTexturesReloaded(callback) {
+    this.onTexturesReloadedCallbacks.push(callback);
+  }
+
+  /**
+   * Remove a texture reload callback
+   * @param {Function} callback - The callback to remove
+   */
+  removeTexturesReloadedCallback(callback) {
+    const index = this.onTexturesReloadedCallbacks.indexOf(callback);
+    if (index !== -1) {
+      this.onTexturesReloadedCallbacks.splice(index, 1);
+    }
+  }
+
+  /**
+   * Notify all callbacks that textures have been reloaded
+   */
+  _notifyTexturesReloaded() {
+    this.onTexturesReloadedCallbacks.forEach(cb => {
+      try {
+        cb(this);
+      } catch (error) {
+        console.error('Error in texture reload callback:', error);
+      }
+    });
+  }
+
+  /**
+   * Reload textures with the default pack (file-based)
+   * @returns {Promise}
+   */
+  async reloadDefaultPack() {
+    if (!this.textureEntries || this.textureEntries.length === 0) {
+      console.warn('No texture entries to reload');
+      return this;
+    }
+
+    // Dispose of old atlas texture
+    if (this.atlasTexture) {
+      this.atlasTexture.dispose();
+    }
+
+    // Reload textures
+    const loadedImages = await this._loadImages(this.texturePaths);
+    const { canvas, atlasMapping } = this._createAtlasCanvas(loadedImages);
+    this.atlasTexture = this._createAtlasTexture(canvas);
+    this.atlasMapping = atlasMapping;
+    this.textureCache = this._createTextureMap(this.atlasTexture, this.atlasMapping);
+    this.currentPackName = 'default';
+    this.isLoaded = true;
+
+    console.log('Reloaded default texture pack');
+
+    // Notify callbacks
+    this._notifyTexturesReloaded();
+
+    return this;
   }
 }

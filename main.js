@@ -6,11 +6,12 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
 import { TextureManager } from './textureManager.js';
-import { InputHandler } from './inputHandler.js'; 
+import { InputHandler } from './inputHandler.js';
 import { VoxelWorld } from './voxelWorld.js'; import { TERRAIN_TYPE } from './terrainGenerator.js';
 import { RenderManager } from './renderManager.js';
 import { TextureDebugger } from './textureDebugger.js';
 import { Profiler } from './profiler.js';
+import { TexturePackManager } from './texturePackManager.js';
 
 
 
@@ -67,6 +68,7 @@ export class Game {
   constructor() {
     this.textures = new TextureManager();
     this.textures.setTextureEntries(textureEntries);
+    this.textures.setDefaultTextureEntries(textureEntries); // Store for pack fallback
     this.scene = null;
     this.camera = null;
     this.renderer = null;
@@ -79,17 +81,25 @@ export class Game {
     this.inputHandler = null;
     this.renderManager = null;
     this.textureDebugger = null;
-    
+
+    // Initialize texture pack manager
+    this.texturePackManager = new TexturePackManager();
+
     // Initialize comprehensive profiler
     this.profiler = new Profiler();
 
     this.debugMenuVisible = false;
     this.debugMenuElement = null;
-    
+
     // Help menu for keyboard controls
     this.helpMenuVisible = false;
     this.helpMenuElement = null;
-    
+
+    // Texture pack state for UI
+    this.texturePackState = {
+      currentPack: 'default'
+    };
+
     // Initialize a toggle for the debug menu
     document.addEventListener('keydown', (e) => {
       if (e.key === 'F3') {
@@ -107,22 +117,25 @@ export class Game {
   async initialize() {
     try {
       await this.textures.load();   // Load the atlas
-      
+
       // Create and initialize the voxel world (needed for the block registry)
       this.voxelWorld = new VoxelWorld(null, this.textures, TERRAIN_TYPE.PERLIN, this.profiler);
-      
+
       // Create texture debugger after textures are loaded
       this.textureDebugger = new TextureDebugger(this.textures, this.voxelWorld.blockRegistry);
       this.textureDebugger.initialize();
-      
+
       this.initScene();
       this.createDebugMenu();
       this.createHelpMenu();
       this.createHelpHint();
-      
+
+      // Setup texture pack UI in profiler
+      this.setupTexturePackUI();
+
       // Show debug menu by default so player can see worker thread status
       this.toggleDebugMenu();
-      
+
       // Show a brief welcome message about the help system
       this.showWelcomeMessage();
       
@@ -334,6 +347,12 @@ export class Game {
             <div><span style="color: #64B5F6; font-weight: bold;">Mouse</span> - Look around</div>
             <div><span style="color: #64B5F6; font-weight: bold;">Space</span> - Move up</div>
             <div><span style="color: #64B5F6; font-weight: bold;">Shift</span> - Move down</div>
+          </div>
+
+          <h3 style="color: #FFA726; margin: 15px 0 10px 0; border-bottom: 1px solid #555; padding-bottom: 5px;">🎨 Texture Packs</h3>
+          <div style="line-height: 1.6;">
+            <div>Use the <strong>Texture Pack</strong> dropdown in the top-right GUI to switch between texture packs.</div>
+            <div style="margin-top: 5px;">Available packs: <span style="color: #64B5F6;">default</span>, <span style="color: #64B5F6;">dev</span></div>
           </div>
         </div>
       </div>
@@ -563,12 +582,16 @@ export class Game {
     const camY = Math.round(this.camera?.position.y || 0);
     const camZ = Math.round(this.camera?.position.z || 0);
 
+    // Get current texture pack name
+    const currentTexturePack = this.textures?.getCurrentPackName() || 'default';
+
     // Update text with only debug info (performance metrics moved to profiler)
     this.debugMenuElement.innerHTML = `
       <strong>DEBUG INFO</strong><br/>
       Position: ${camX}, ${camY}, ${camZ}<br/>
       Water Shader: ${waterShaderType}<br/>
       Terrain Type: ${terrainType}<br/>
+      Texture Pack: ${currentTexturePack}<br/>
       Rendering: ${renderingMode}<br/>
       Chunks: ${renderedChunks} rendered / ${totalChunks} total<br/>
       View Distance: ${viewDistance} chunks<br/>
@@ -582,18 +605,18 @@ export class Game {
   // Toggle between chunk-based and single mesh rendering
   toggleChunkRendering() {
     this.useChunkRendering = !this.useChunkRendering;
-    
+
     // Clear all meshes from the scene
     this.voxelWorld.meshes.forEach(mesh => this.scene.remove(mesh));
     this.voxelWorld.meshBuilder._removeAllChunkMeshes(this.scene);
-    
+
     if (this.useChunkRendering) {
       // Build chunk-based meshes
       this.voxelWorld.buildAllChunkMeshes(
-        this.camera.position.x, 
+        this.camera.position.x,
         this.camera.position.z
       );
-      
+
       // Display a message
       const message = document.createElement('div');
       message.textContent = 'Chunk-Based Rendering Enabled';
@@ -607,14 +630,14 @@ export class Game {
       message.style.borderRadius = '5px';
       message.style.zIndex = '1000';
       document.body.appendChild(message);
-      
+
       setTimeout(() => {
         document.body.removeChild(message);
       }, 2000);
     } else {
       // Build single mesh
       this.voxelWorld.buildCulledMesh();
-      
+
       // Display a message
       const message = document.createElement('div');
       message.textContent = 'Single Mesh Rendering Enabled';
@@ -628,11 +651,135 @@ export class Game {
       message.style.borderRadius = '5px';
       message.style.zIndex = '1000';
       document.body.appendChild(message);
-      
+
       setTimeout(() => {
         document.body.removeChild(message);
       }, 2000);
     }
+  }
+
+  /**
+   * Setup texture pack UI in the profiler GUI
+   */
+  setupTexturePackUI() {
+    if (!this.profiler || !this.profiler.gui) {
+      console.warn('Profiler GUI not available for texture pack UI');
+      return;
+    }
+
+    // Create texture pack folder in the GUI
+    const textureFolder = this.profiler.gui.addFolder('Texture Pack');
+
+    // Get available packs
+    const availablePacks = ['default', ...this.texturePackManager.getAvailablePacks()];
+
+    // Add dropdown for pack selection
+    textureFolder.add(this.texturePackState, 'currentPack', availablePacks)
+      .name('Select Pack')
+      .onChange((packName) => {
+        this.changeTexturePack(packName);
+      });
+
+    // Open the folder by default
+    textureFolder.open();
+
+    console.log('Texture pack UI initialized with packs:', availablePacks);
+  }
+
+  /**
+   * Change the active texture pack and rebuild the world
+   * @param {string} packName - Name of the pack to switch to
+   */
+  async changeTexturePack(packName) {
+    console.log(`Changing texture pack to: ${packName}`);
+
+    // Show loading message
+    const message = document.createElement('div');
+    message.textContent = `Loading texture pack: ${packName}...`;
+    message.style.position = 'absolute';
+    message.style.top = '50%';
+    message.style.left = '50%';
+    message.style.transform = 'translate(-50%, -50%)';
+    message.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+    message.style.color = 'white';
+    message.style.padding = '20px';
+    message.style.borderRadius = '10px';
+    message.style.zIndex = '10000';
+    message.style.fontSize = '18px';
+    document.body.appendChild(message);
+
+    try {
+      if (packName === 'default') {
+        // Reload default textures
+        await this.textures.reloadDefaultPack();
+      } else {
+        // Get the texture pack
+        const pack = this.texturePackManager.getPack(packName);
+        if (!pack) {
+          console.error(`Texture pack '${packName}' not found`);
+          message.textContent = `Error: Pack '${packName}' not found`;
+          setTimeout(() => document.body.removeChild(message), 2000);
+          return;
+        }
+
+        // Load textures from the pack
+        await this.textures.loadFromPack(pack);
+      }
+
+      // Rebuild all chunk meshes with new textures
+      this.rebuildAllMeshes();
+
+      // Update message to show success
+      message.textContent = `Texture pack '${packName}' loaded!`;
+      message.style.backgroundColor = 'rgba(76, 175, 80, 0.9)';
+
+      setTimeout(() => {
+        if (message.parentNode) {
+          document.body.removeChild(message);
+        }
+      }, 1500);
+
+    } catch (error) {
+      console.error('Error changing texture pack:', error);
+      message.textContent = `Error loading pack: ${error.message}`;
+      message.style.backgroundColor = 'rgba(244, 67, 54, 0.9)';
+
+      setTimeout(() => {
+        if (message.parentNode) {
+          document.body.removeChild(message);
+        }
+      }, 3000);
+    }
+  }
+
+  /**
+   * Rebuild all meshes after texture change
+   */
+  rebuildAllMeshes() {
+    if (!this.voxelWorld || !this.scene) return;
+
+    console.log('Rebuilding all meshes with new textures...');
+
+    // Remove all existing meshes
+    this.voxelWorld.meshes.forEach(mesh => this.scene.remove(mesh));
+    this.voxelWorld.meshBuilder._removeAllChunkMeshes(this.scene);
+
+    // Clear mesh builder's chunk meshes
+    this.voxelWorld.meshBuilder.chunkMeshes.clear();
+
+    // Rebuild based on current rendering mode
+    if (this.useChunkRendering) {
+      // Rebuild all chunks that exist in the chunk manager
+      for (const [key] of this.voxelWorld.chunkManager.chunks) {
+        const [chunkX, chunkZ] = key.split(',').map(Number);
+        this.voxelWorld.rebuildChunkMesh(chunkX, chunkZ);
+      }
+    } else {
+      // Build single mesh
+      this.voxelWorld.buildCulledMesh();
+    }
+
+    console.log('Mesh rebuild complete');
   }
 
   animate = () => {
